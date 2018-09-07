@@ -412,7 +412,7 @@ pointP256 Try_And_Increment(const str & pk_string, const str & alpha_string) {
     unsigned char two_string = 0x02;
     unsigned char suite_string = 0x01;
     for (;; ctr++) {
-        str h_string = str(two_string) || (str(suite_string) || str(one_string) || pk_string || alpha_string || str(ctr, 4)).hash();
+        str h_string = str(two_string) || (str(suite_string) || str(one_string) || pk_string || alpha_string || str(ctr, 1)).hash();
 
         bool isValid;
         pointP256 H = h_string.toECPoint(isValid);

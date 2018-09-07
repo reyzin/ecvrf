@@ -44,7 +44,14 @@ void printArray(const unsigned char *  input, int iLen) {
 
 
 class pointEd25519 {
-    // curve is -x^2+y^2 = 1+dx^2y^2
+    /*
+     curve is -x^2+y^2 = 1+dx^2y^2, where d = -121665/121666
+     encoding: edwards. y followed by x parity bit. Point at infinity: y = 1, x = 0.
+     birationally equivalent to montgomery: u, v v2 = u(u2 + Au + 1) (in Mongomery, we store only u as PK).
+     Conversion x=(u/v) * \sqrt(-486664),y=(u-1)/(u+1)
+     To go back: u = (1+y)/(1-y) whenever (x, y) is not the point at infinity).
+     */
+
 public:
     ZZ_p x;
     ZZ_p y;
