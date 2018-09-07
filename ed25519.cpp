@@ -544,10 +544,47 @@ void testEdDSAExample (const char * sk_input,  const char* M_input, const char *
     };
     
 }
+
+void testOrder8Points() {
+    // These are from Section 5.6.1 of vrf draft
+    ZZ bad_y2 = conv<ZZ> ("2707385501144840649318225287225658788936804267575313519463743609750303402022");
+    str bad_pk [] = {
+        str(ZZ(0), 32),
+        str(ZZ(1), 32),
+        str(bad_y2, 32),
+        str(p-bad_y2, 32),
+        str(p-1, 32),
+        str(p, 32),
+        str(p+1, 32)};
+    
+    ZZ_p bad_y2_p = conv<ZZ_p>(bad_y2);
+    
+    // these are from https://cr.yp.to/ecdh.html#validate
+    if(conv<ZZ>((1+bad_y2_p)/(1-bad_y2_p)) != conv<ZZ>("39382357235489614581723060781553021112529911719440698176882885853963445705823")) {
+        cout << "ERROR: Montogmery and Edwards coordinates do not correspond" << endl;
+    }
+       
+       if(conv<ZZ>((1-bad_y2_p)/(1+bad_y2_p)) != conv<ZZ>("325606250916557431795983626356110631294008115727848805560023387167927233504")) {
+        cout << "ERROR: Montogmery and Edwards coordinates do not correspond" << endl;
+    }
+
+    for (int i =0; i<7; i++) {
+        bool isValid;
+        pointEd25519 pt =bad_pk[i].toECPoint(isValid);
+        if (!isValid) {
+            cout << "ERROR: point " << i <<"  is not even a valid point!\n";
+        }
+        if (!((bad_pk[i].toECPoint(isValid))*cofactor).isInfinity()) {
+            cout << "ERROR: point " << i <<"  is not bad!\n";
+        }
+    }
+}
+
 int main()
 {
     
     initialize();
+    testOrder8Points();
     
     // Examples are from https://tools.ietf.org/html/rfc8032#section-7.1; vrf values are our own
 
