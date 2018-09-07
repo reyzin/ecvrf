@@ -54,30 +54,12 @@ unsigned char hexToNum(unsigned char in) {
     return in-'a'+10;
     
 }
-unsigned char numToHex(unsigned char in) {
+unsigned char numToHex(unsigned char in, bool upperCase) {
     if (in<10) return in+'0';
-    return in+'A'-10;
+    return in-10 + (upperCase ? 'A' : 'a');
 }
 
 
-void arrayFromHexString(unsigned char * res, const char *  input) {
-    for (int i = 0; i<strlen(input); i+=2) {
-        res[i/2] = hexToNum(input[i])*16+hexToNum(input[i+1]);
-    }
-}
-bool arrayEqualsHexString(const unsigned char * array, const char *  hexString) {
-    for (int i = 0; i<strlen(hexString); i+=2) {
-        if (array[i/2] != hexToNum(hexString[i])*16+hexToNum(hexString[i+1]))
-            return false;
-    }
-    return true;
-}
-
-void printArray(const unsigned char *  input, int iLen) {
-    for (int i = 0; i<iLen; i++) {
-        printf("%02x", input[i]);
-    }
-}
 
 
 class pointP256 {
@@ -315,12 +297,12 @@ public:
         
     }
     
-    // to hex string
+    // to hex string -- lowercase
     char * toHexString() const {
         char * ret = new char[len*2+1];
         for (int i = 0; i<len; i++) {
-            ret[2*i] = numToHex(s[i]/16);
-            ret[2*i+1] = numToHex(s[i]%16);
+            ret[2*i] = numToHex(s[i]/16, false);
+            ret[2*i+1] = numToHex(s[i]%16, false);
         }
         ret[2*len] ='\0';
         return ret;
@@ -368,13 +350,26 @@ public:
         return ret;
     }
     
+    // case insensitive
     bool operator == (const char * hexString) {
-        return strcmp(this->toHexString(), hexString)==0;
+        char * temp = this->toHexString();
+        int i;
+        for (i = 0; temp[i]!='\0' && hexString[i]!='\0'; i++) {
+            if (tolower(temp[i])!=tolower(hexString[i])) return false;
+        }
+        return temp[i]==hexString[i];
     }
     bool operator != (const char * hexString) {
-        return strcmp(this->toHexString(), hexString)!=0;
+        return ! (*this==hexString);
     }
 };
+
+ostream& operator<<(ostream& os, const str& s)
+{
+    os << s.toHexString();
+    return os;
+}
+
 
 
 
@@ -442,7 +437,7 @@ str ECDSA_KeyGen(const str & SK) {
     return str(B*SK.toZZ());
 }
 
-pointP256 Try_And_Increment(const str & pk_string, const str & alpha_string) {
+pointP256 Try_And_Increment(const str & pk_string, const str & alpha_string, bool verbose) {
     ZZ ctr(0);
     unsigned char one_string = 0x01;
     unsigned char two_string = 0x02;
@@ -452,25 +447,35 @@ pointP256 Try_And_Increment(const str & pk_string, const str & alpha_string) {
 
         bool isValid;
         pointP256 H = h_string.toECPoint(isValid);
-        if (isValid) return H;
+        if (isValid) {
+            if (verbose) cout << "try_and_increment succeded on ctr = " << ctr << " <vspace />" << endl;
+            return H;
+        }
     }
 }
 
 
-pointP256 SWU(const str & pk_string, const str & alpha_string) {
+pointP256 SWU(const str & pk_string, const str & alpha_string, bool verbose) {
     unsigned char one_string = 0x01;
     unsigned char suite_string = 0x02;
     unsigned char two_string = 0x02;
 
 
     str hash_string = (str(suite_string) || str(one_string) || pk_string || alpha_string).hash();
-    ZZ_p t = conv<ZZ_p>(hash_string.toZZ());
+    ZZ t_int = hash_string.toZZ();
+    ZZ_p t = conv<ZZ_p>(t_int);
+    if (verbose) cout << "In SWU: t = " << str(conv<ZZ>(t), 32) << " <vspace />" << endl;
+
     ZZ_p r = -(t*t);
     ZZ_p d = r*r+r;
     ZZ_p d_inverse = IsZero(d) ? d : inv(d); // same as power(d, p-2);
     ZZ_p x = c*(1+d_inverse);
     ZZ_p w = x*x*x+a*x+b;
-    if (Jacobi(conv<ZZ>(w), p) == -1) {
+    if (verbose) cout << "In SWU: w = " << str(conv<ZZ>(w), 32) << " <vspace />" << endl;
+    int jacobi = Jacobi(conv<ZZ>(w), p);
+    if (verbose) cout << "In SWU: e = " << jacobi << " <vspace />" << endl;
+
+    if (jacobi == -1) {
         x *= r;
     }
     bool isValid;
@@ -489,7 +494,7 @@ ZZ ECVRF_Hash_Points(const pointP256 & p1, const pointP256 & p2, const pointP256
 }
 
 
-str ECVRF_Prove(const str & SK, const str & alpha_string, bool useSWU) {
+str ECVRF_Prove(const str & SK, const str & alpha_string, bool useSWU, bool verbose) {
     // Secret Scalar
     ZZ x = SK.toZZ();
     // public key
@@ -497,14 +502,31 @@ str ECVRF_Prove(const str & SK, const str & alpha_string, bool useSWU) {
     
     // hash to curve
     unsigned char suite_string = useSWU? 0x02 : 0x01;
-    pointP256 H = useSWU ? SWU(PK, alpha_string) : Try_And_Increment(PK, alpha_string);
+    pointP256 H = useSWU ? SWU(PK, alpha_string, verbose) : Try_And_Increment(PK, alpha_string, verbose);
+    
+    if (verbose) cout << "H = " << str(H) << " <vspace />" << endl;
+
     
     pointP256 Gamma = H*x;
     ZZ k = Nonce_Generation(SK, str(H));
-    ZZ c = ECVRF_Hash_Points(H, Gamma, B*k, H*k, suite_string);
+    if (verbose) cout << "k = " << str(k, 32) << " <vspace />" << endl;
+    
+    pointP256 U = B*k;
+    pointP256 V = H*k;
+    if (verbose) cout << "U = k*B = " << str(U) << " <vspace />" << endl;
+    if (verbose) cout << "V = k*H = " << str(V) << " <vspace />" << endl;
+
+    ZZ c = ECVRF_Hash_Points(H, Gamma, U, V, suite_string);
     ZZ s = (k+c*x) % q;
 
-    return str(Gamma) || str(c, 16) || str(s, 32);
+    str proof = str(Gamma) || str(c, 16) || str(s, 32);
+    if (verbose) cout << "proof = " << proof << " <vspace />" << endl;
+    
+    // proof_to_hash
+    unsigned char three_string = 0x03;
+    if (verbose) cout << "beta = " << (str(suite_string) || str(three_string) || str(Gamma)).hash();
+
+    return proof;
 }
 
 bool ECVRF_Verify(const str & proof, const str & PK, const str & alpha_string, bool useSWU) {
@@ -521,7 +543,7 @@ bool ECVRF_Verify(const str & proof, const str & PK, const str & alpha_string, b
     ZZ s = proof.slice(49, 81).toZZ();
 
     // Hash to curve
-    pointP256 H = useSWU ? SWU(PK, alpha_string) : Try_And_Increment(PK, alpha_string);
+    pointP256 H = useSWU ? SWU(PK, alpha_string, false) : Try_And_Increment(PK, alpha_string, false);
 
     // Hash points
     ZZ cprime = ECVRF_Hash_Points(H, Gamma, B*s-Y*c, H*s-Gamma*c, suite_string);
@@ -530,36 +552,49 @@ bool ECVRF_Verify(const str & proof, const str & PK, const str & alpha_string, b
     
 }
 
-void testECDSAExample (const char * sk_input, const char* M_input, const char * pk_value,  const char * k_value, const char* sig_value,const char* proofNoSWU_value, const char* proofSWU_value) {
+void generateTestVector(const char * sk_input, const char * M_input, bool useSWU) {
+    str SK(sk_input);
+    cout<<"<t>"<<endl;
+    cout << "SK = x = " << str(SK) << " <vspace />" << endl;
+    cout << "PK = " << B*SK.toZZ() << " <vspace />" << endl;
+    str M(M_input);
+    cout << "M = " << M << " (ASCII \"";
+    for (int i=0; i<M.len; i++) cout<< M.s[i];
+    cout <<"\") <vspace />" << endl;
+    str proof = ECVRF_Prove(SK, str(M_input), useSWU, true);
+    cout<<"</t>"<<endl;
+}
+
+void testECDSAExample (const char * sk_input, const char* M_input, const char * pk_value,  const char* sig_value,const char* proofNoSWU_value, const char* proofSWU_value) {
    
     str SK(sk_input);
     str PK = ECDSA_KeyGen(SK);
     
     if (PK!=pk_value) {
         cout<<endl<<"ERROR: PK = ";
-        printArray(PK.s, 32);
         cout<<endl;
+        cout << PK;
         cout<<pk_value;
-        cout<<endl;
-        cout<<PK.toHexString();
         cout<<endl;
     }
     
     str M(M_input);
 
-    str sig = ECDSA_Sign(SK, M);
+    if (sig_value!=NULL) {
+        str sig = ECDSA_Sign(SK, M);
     
-    if (sig!=sig_value) {
-        cout<<endl<<"ERROR: Sig = ";
-        cout<<sig.toHexString();
-        cout<<endl;
+        if (sig!=sig_value) {
+            cout<<endl<<"ERROR: Sig = ";
+            cout<<sig;
+            cout<<endl;
+        }
     }
 
     // Now evaluate the VRF on the same example and test the result
-    str proof = ECVRF_Prove(SK, M, false); // no SWU
+    str proof = ECVRF_Prove(SK, M, false, false); // no SWU
     if(proof!=proofNoSWU_value) {
         cout<<endl<<"ERROR: ProofNoSWU = ";
-        cout<<proof.toHexString();
+        cout<<proof;
         cout<<endl;
     }
     if(!ECVRF_Verify(proof, PK, M, false)) {
@@ -567,10 +602,10 @@ void testECDSAExample (const char * sk_input, const char* M_input, const char * 
     };
      
 
-    proof = ECVRF_Prove(SK, M, true); // yes elligator
+    proof = ECVRF_Prove(SK, M, true, false); // yes elligator
     if(proof!=proofSWU_value) {
         cout<<endl<<"ERROR: ProofSWU = ";
-        cout<<proof.toHexString();
+        cout<<proof;
         cout<<endl;
     }
     if(!ECVRF_Verify(proof, PK, M, true)) {
@@ -588,15 +623,55 @@ int main()
     testECDSAExample("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
                      "73616D706C65", // ascii "sample"
                      "0360FED4BA255A9D31C961EB74C6356D68C049B8923B61FA6CE669622E60F29FB6",
-                     "882905F1227FD620FBF2ABF21244F0BA83D0DC3A9103DBBEE43A1FB858109DB4",
+                     //"882905F1227FD620FBF2ABF21244F0BA83D0DC3A9103DBBEE43A1FB858109DB4",
                      "EFD48B2AACB6A8FD1140DD9CD45E81D69D2C877B56AAF991C34D0EA84EAF3716F7CB1C942D657C41D436C7A1B6E29F65F3E900DBB9AFF4064DC4AB2F843ACDA8",
                      "029BDCA4CC39E57D97E2F42F88BCF0ECB1120FB67EB408A856050DBFBCBF57C524193B7A850195EF3D5329018A8683114CB446C33FE16EBCC0BC775B043B5860DCB2E553D91268281688438DF9394103AB",
                      "021D684D682E61DD76C794EEF43988A2C61FBDB2AF64FBB4F435CC2A842B0024C35641FE838A72D0D9BC1BCF032F895F3B3F4C79D0F8F9D5705D83181FE82E19F49619EB8290930809B2B9651786E4F945");
     testECDSAExample("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
                      "74657374", // ascii "test"
                      "0360FED4BA255A9D31C961EB74C6356D68C049B8923B61FA6CE669622E60F29FB6",
-                     "882905F1227FD620FBF2ABF21244F0BA83D0DC3A9103DBBEE43A1FB858109DB4",
+                     //"882905F1227FD620FBF2ABF21244F0BA83D0DC3A9103DBBEE43A1FB858109DB4",
                      "F1ABB023518351CD71D881567B1EA663ED3EFCF6C5132B354F28D3B0B7D38367019F4113742A2B14BD25926B49C649155F267E60D3814B4C0CC84250E46F0083",
                      "03873A1CCE2CA197E466CC116BCA7B1156FFF599BE67EA40B17256C4F34BA2549C9C8B100049E76661DBCF6393E4D625597ED21D4DE684E08DC6817B60938F3FF4148823EA46A47FA8A4D43F5FA6F77DC8",
                      "0376B758F457D2CABDFAEB18700E46E64F073EB98C119DEE4DB6C5BB1EAF677806895AB451335F6ADB792D40C68351929FCE44068FFDCBBEAC12F058B0365856ED5D86AADBA1F54C9DB13F9C8759589609");
+    
+    // This example is from ANSI X9.62 2005 L.4.2
+    ZZ ANSIX962sk =  conv<ZZ>("20186677036482506117540275567393538695075300175221296989956723148347484984008");
+    str ANSIX962SK(ANSIX962sk, 32);
+
+    
+    testECDSAExample (ANSIX962SK.toHexString(),
+                      "4578616D706C65206F66204543445341207769746820616E736970323536723120616E64205348412D323536", // ascii "Example of ECDSA with ansix9p256r1 and SHA-256"
+                      "03596375E6CE57E0F20294FC46BDFCFD19A39F8161B58695B3EC5B3D16427C274D",
+                      NULL,
+                      "02abe3ce3b3aa2ab3c6855a7e729517ebfab6901c2fd228f6fa066f15ebc9b9d41fd212750d9ff775527943049053a77252e9fa59e332a2e5d5db6d0be734076e98befcdefdcbaf817a5c13d4e45fbf9bc",
+                      "035e844533a7c5109ab3dffd04f2ef0d38d679101124f15243199ce92f0f29477cd29f8754f3bbdea3dd129560e9ba0c73ae7894a8d0c0e1ac01e5c2685da67009d96e6ccdb634c7e0c5f38fa3e4908c02"
+                      );
+    
+    cout<<"<section title=\"ECVRF-P256-SHA256-TAI\">"<<endl;
+    cout<<"<t>These two example secret keys and messages are taken from Appendix A.2.5 of <xref target=\"RFC6979\"/>.</t>"<<endl;
+    generateTestVector("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
+                       "73616D706C65", false);
+    generateTestVector("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
+                       "74657374", false);
+    
+    cout<<"<t>This example secret key and message are taken from Appendix L.4.2 of <xref target=\"ANSI.X9-62-2005\"/>.</t>"<<endl;
+
+    generateTestVector(ANSIX962SK.toHexString(),
+                       "4578616D706C65206F66204543445341207769746820616E736970323536723120616E64205348412D323536", false);
+
+    cout<<"</section>"<<endl;
+    cout<<"<section title=\"ECVRF-P256-SHA256-SWU\">"<<endl;
+    cout<<"<t>These two example secret keys and messages are taken from Appendix A.2.5 of <xref target=\"RFC6979\"/>.</t>"<<endl;
+    
+    generateTestVector("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
+                       "73616D706C65", true);
+    generateTestVector("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
+                       "74657374", true);
+    
+    cout<<"<t>This example secret key and message are taken from Appendix L.4.2 of <xref target=\"ANSI.X9-62-2005\"/>.</t>"<<endl;
+    generateTestVector(ANSIX962SK.toHexString(),
+                       "4578616D706C65206F66204543445341207769746820616E736970323536723120616E64205348412D323536", true);
+    cout<<"</section>"<<endl;
+
 }

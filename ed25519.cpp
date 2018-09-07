@@ -54,24 +54,11 @@ unsigned char hexToNum(unsigned char in) {
     return in-'a'+10;
     
 }
-unsigned char numToHex(unsigned char in) {
+unsigned char numToHex(unsigned char in, bool upperCase) {
     if (in<10) return in+'0';
-    return in+'a'-10;
+    return in-10 + (upperCase ? 'A' : 'a');
 }
 
-
-void arrayFromHexString(unsigned char * res, const char *  input) {
-    for (int i = 0; i<strlen(input); i+=2) {
-        res[i/2] = hexToNum(input[i])*16+hexToNum(input[i+1]);
-    }
-}
-bool arrayEqualsHexString(const unsigned char * array, const char *  hexString) {
-    for (int i = 0; i<strlen(hexString); i+=2) {
-        if (array[i/2] != hexToNum(hexString[i])*16+hexToNum(hexString[i+1]))
-            return false;
-    }
-    return true;
-}
 
 void printArray(const unsigned char *  input, int iLen) {
     for (int i = 0; i<iLen; i++) {
@@ -287,12 +274,12 @@ public:
         
     }
     
-    // to hex string
+    // to hex string (lowercase)
     char * toHexString() const {
         char * ret = new char[len*2+1];
         for (int i = 0; i<len; i++) {
-            ret[2*i] = numToHex(s[i]/16);
-            ret[2*i+1] = numToHex(s[i]%16);
+            ret[2*i] = numToHex(s[i]/16, false);
+            ret[2*i+1] = numToHex(s[i]%16, false);
         }
         ret[2*len] ='\0';
         return ret;
@@ -322,13 +309,26 @@ public:
         return ret;
     }
     
+    // case insensitive
     bool operator == (const char * hexString) {
-        return strcmp(this->toHexString(), hexString)==0;
+        char * temp = this->toHexString();
+        int i;
+        for (i = 0; temp[i]!='\0' && hexString[i]!='\0'; i++) {
+            if (tolower(temp[i])!=tolower(hexString[i])) return false;
+        }
+        return temp[i]==hexString[i];
     }
     bool operator != (const char * hexString) {
-        return strcmp(this->toHexString(), hexString)!=0;
+        return ! (*this==hexString);
     }
+    
 };
+
+ostream& operator<<(ostream& os, const str& s)
+{
+    os << s.toHexString();
+    return os;
+}
 
 str EdDSA_Sign(const str & SK, const str & M) {
     // From https://tools.ietf.org/html/rfc8032#section-5.1.5
@@ -384,7 +384,7 @@ void initialize() {
     q+=conv<ZZ>("27742317777372353535851937790883648493");
 }
 
-pointEd25519 Try_And_Increment(const str & pk_string, const str & alpha_string) {
+pointEd25519 Try_And_Increment(const str & pk_string, const str & alpha_string, bool verbose) {
     ZZ ctr(0);
     unsigned char one_string = 0x01;
     unsigned char suite_string = 0x03;
@@ -396,6 +396,7 @@ pointEd25519 Try_And_Increment(const str & pk_string, const str & alpha_string) 
             pointEd25519 G = (*H)*cofactor;
             if (!G.isInfinity()) {
                 delete H;
+                if (verbose) cout << "try_and_increment succeded on ctr = " << ctr << " <vspace />" << endl;
                 return G;
             }
             delete H;
@@ -404,7 +405,7 @@ pointEd25519 Try_And_Increment(const str & pk_string, const str & alpha_string) 
 }
 
 
-pointEd25519 Elligator2(const str & pk_string, const str & alpha_string) {
+pointEd25519 Elligator2(const str & pk_string, const str & alpha_string, bool verbose) {
     unsigned char one_string = 0x01;
     unsigned char suite_string = 0x04;
 
@@ -414,12 +415,17 @@ pointEd25519 Elligator2(const str & pk_string, const str & alpha_string) {
     hash_string.s[31] &= 0x7F;
     ZZ r_int = hash_string.slice(0, 32).toZZ();
     ZZ_p r = conv<ZZ_p>(r_int);
+    if (verbose) cout << "In Elligator: r = " << str(r_int, 32) << " <vspace />" << endl;
+
     
     ZZ_p u = - A / (1 + 2*r*r );
     ZZ_p w = u * (u*u + A*u + 1);
+    if (verbose) cout << "In Elligator: w = " << str(conv<ZZ>(w), 32) << " <vspace />" << endl;
     if (Jacobi(conv<ZZ>(w), p) != 1) {
+        if (verbose) cout << "In Elligator: e = -1" << " <vspace />" << endl;
         u = -A-u;
     }
+    else if (verbose) cout << "In Elligator: e = 1" << " <vspace />" << endl;
     ZZ_p y = (u-1)/(u+1);
     
     str H_string(conv<ZZ>(y), 32);
@@ -439,7 +445,7 @@ ZZ EdVRF_Hash_Points(const pointEd25519 & p1, const pointEd25519 & p2, const poi
     return (str(suite_string) || str(two_string) || str(p1) || str(p2) || str(p3) || str(p4)).hash().slice(0,16).toZZ();
 }
 
-str EdVRF_Prove(const str & SK, const str & alpha_string, bool useElligator) {
+str EdVRF_Prove(const str & SK, const str & alpha_string, bool useElligator, bool verbose) {
     // From https://tools.ietf.org/html/rfc8032#section-5.1.5
     
     str h = SK.hash();
@@ -451,25 +457,43 @@ str EdVRF_Prove(const str & SK, const str & alpha_string, bool useElligator) {
     // secret scalar
     ZZ x = h.slice(0, 32).toZZ();
     
+    if (verbose) cout << "x = " << str(x, 32) << " <vspace />" << endl;
+
+    
     // public key
     str PK(B*x);
 
     // hash to curve
     unsigned char suite_string = useElligator? 0x04 : 0x03;
-    pointEd25519 H = useElligator ? Elligator2(PK, alpha_string) : Try_And_Increment(PK, alpha_string);
+    pointEd25519 H = useElligator ? Elligator2(PK, alpha_string, verbose) : Try_And_Increment(PK, alpha_string, verbose);
     
+    if (verbose) cout << "H = " << str(H) << " <vspace />" << endl;
+
     pointEd25519 Gamma = H*x;
-    
+
     // Nonce Generation
     str k_string = (h.slice(32,64) || str(H)).hash();
     ZZ k = k_string.toZZ();
+    if (verbose) cout << "k = " << str(k, 64) << " <vspace />" << endl;
 
     // Hash points
-    ZZ c = EdVRF_Hash_Points(H, Gamma, B*k, H*k, suite_string);
+    pointEd25519 U = B*k;
+    pointEd25519 V = H*k;
+    if (verbose) cout << "U = k*B = " << str(U) << " <vspace />" << endl;
+    if (verbose) cout << "V = k*H = " << str(V) << " <vspace />" << endl;
+
+    ZZ c = EdVRF_Hash_Points(H, Gamma, U, V, suite_string);
     
     ZZ s = (k+c*x) % q;
     
-    return str(Gamma) || str(c, 16) || str(s, 32);
+    str proof = str(Gamma) || str(c, 16) || str(s, 32);
+    if (verbose) cout << "proof = " << proof << " <vspace />" << endl;
+    
+    // proof_to_hash
+    unsigned char three_string = 0x03;
+    if (verbose) cout << "beta = " << (str(suite_string) || str(three_string) || str(Gamma*cofactor)).hash();
+    
+    return proof;
 }
 
 bool EdVRF_Verify(const str & proof, const str & PK, const str & alpha_string, bool useElligator) {
@@ -487,13 +511,28 @@ bool EdVRF_Verify(const str & proof, const str & PK, const str & alpha_string, b
     ZZ s = proof.slice(48, 80).toZZ();
 
     // Hash to curve
-    pointEd25519 H = useElligator ? Elligator2(PK, alpha_string) : Try_And_Increment(PK, alpha_string);
+    pointEd25519 H = useElligator ? Elligator2(PK, alpha_string, false) : Try_And_Increment(PK, alpha_string, false);
 
     // Hash points
     ZZ cprime = EdVRF_Hash_Points(H, Gamma, B*s-Y*c, H*s-Gamma*c, suite_string);
     
     return c==cprime;
     
+}
+
+void generateTestVector(const char * sk_input, const char * M_input, bool useElligator) {
+    str SK(sk_input);
+    cout<<"<t>"<<endl;
+    cout << "SK = " << str(SK) << " <vspace />" << endl;
+    cout << "PK = " << EdDSA_KeyGen(SK) << " <vspace />" << endl;
+    str M(M_input);
+    cout << "M = " << M ;
+    if(M.len == 0) cout << " (the empty string)";
+    else if(M.len == 1) cout << " (1 byte)";
+    else cout << " (" << M.len << " bytes)";
+    cout <<" <vspace />" << endl;
+    str proof = EdVRF_Prove(SK, str(M_input), useElligator, true);
+    cout<<"</t>"<<endl;
 }
 
 void testEdDSAExample (const char * sk_input,  const char* M_input, const char * pk_value, const char* sig_value, const char* proofNoElligator_value, const char* proofElligator_value) {
@@ -503,11 +542,9 @@ void testEdDSAExample (const char * sk_input,  const char* M_input, const char *
     
     if (PK!=pk_value) {
         cout<<endl<<"ERROR: PK = ";
-        printArray(PK.s, 32);
+        cout << PK;
         cout<<endl;
         cout<<pk_value;
-        cout<<endl;
-        cout<<PK.toHexString();
         cout<<endl;
     }
     
@@ -517,15 +554,15 @@ void testEdDSAExample (const char * sk_input,  const char* M_input, const char *
     
     if (sig!=sig_value) {
         cout<<endl<<"ERROR: Sig = ";
-        cout<<sig.toHexString();
+        cout<<sig;
         cout<<endl;
     }
 
     // Now evaluate the VRF on the same example and test the result
-    str proof = EdVRF_Prove(SK, M, false); // no elligator
+    str proof = EdVRF_Prove(SK, M, false, false); // no elligator
     if(proof!=proofNoElligator_value) {
         cout<<endl<<"ERROR: ProofNoElligator = ";
-        cout<<proof.toHexString();
+        cout<<proof;
         cout<<endl;
     }
     if(!EdVRF_Verify(proof, PK, M, false)) {
@@ -533,10 +570,10 @@ void testEdDSAExample (const char * sk_input,  const char* M_input, const char *
     };
      
 
-    proof = EdVRF_Prove(SK, M, true); // yes elligator
+    proof = EdVRF_Prove(SK, M, true, false); // yes elligator
     if(proof!=proofElligator_value) {
         cout<<endl<<"ERROR: ProofElligator = ";
-        cout<<proof.toHexString();
+        cout<<proof;
         cout<<endl;
     }
     if(!EdVRF_Verify(proof, PK, M, true)) {
@@ -599,6 +636,28 @@ int main()
      testEdDSAExample("c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7",
                       "af82",
                       "fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025",  "6291d657deec24024827e69c3abe01a30ce548a284743a445e3680d7db5ac3ac18ff9b538d16f290ae67f760984dc6594a7c15e9716ed28dc027beceea1ec40a",  "aca8ade9b7f03e2b149637629f95654c94fc9053c225ec21e5838f193af2b727b84ad849b0039ad38b41513fe5a66cdd2367737a84b488d62486bd2fb110b4801a46bfca770af98e059158ac563b690f",                     "dfa2cba34b611cc8c833a6ea83b8eb1bb5e2ef2dd1b0c481bc42ff36ae7847f6ab52b976cfd5def172fa412defde270c8b8bdfbaae1c7ece17d9833b1bcf31064fff78ef493f820055b561ece45e1009");
+    
+    cout<<"<section title=\"ECVRF-ED25519-SHA512-TAI\">"<<endl;
+    cout<<"<t>These three example secret keys and messages are taken from Section 7.1 of <xref target=\"RFC8032\"/>.</t>"<<endl;
+    generateTestVector("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+                     "", false);
+    generateTestVector("4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
+                     "72", false);
+    generateTestVector("c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7",
+                       "af82",false);
+    cout<<"</section>"<<endl;
+    cout<<"<section title=\"ECVRF-ED25519-SHA512-Elligator2\">"<<endl;
+    cout<<"<t>These three example secret keys and messages are taken from Section 7.1 of <xref target=\"RFC8032\"/>.</t>"<<endl;
+
+    generateTestVector("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+                     "", true);
+    generateTestVector("4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
+                     "72", true);
+    generateTestVector("c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7",
+                       "af82",true);
+    cout<<"</section>"<<endl;
+
+
     
    
 }
