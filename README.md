@@ -1,5 +1,5 @@
 INSECURE and INEFFICIENT reference implementation for the [ECVRF](https://tools.ietf.org/html/draft-irtf-cfrg-vrf-02) (all four specified there).
-
+Requires [GMP](https://gmplib.org) and [NTL](https://shoup.net/ntl).  
 !!!!!!!!!!!!!!!!!!!!!!!!! WARNING !!!!!!!!!!!!!!!!!!!!!!!!!
 
 THIS CODE IS INSECURE AND NOT TO BE USED FOR ACTUAL CRYPTO!!!
