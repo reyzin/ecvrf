@@ -520,7 +520,7 @@ str ECVRF_Prove(const str & SK, const str & alpha_string, bool useSWU, bool verb
     ZZ s = (k+c*x) % q;
 
     str proof = str(Gamma) || str(c, 16) || str(s, 32);
-    if (verbose) cout << "proof = " << proof << " <vspace />" << endl;
+    if (verbose) cout << "pi = " << proof << " <vspace />" << endl;
     
     // proof_to_hash
     unsigned char three_string = 0x03;
@@ -558,7 +558,7 @@ void generateTestVector(const char * sk_input, const char * M_input, bool useSWU
     cout << "SK = x = " << str(SK) << " <vspace />" << endl;
     cout << "PK = " << B*SK.toZZ() << " <vspace />" << endl;
     str M(M_input);
-    cout << "M = " << M << " (ASCII \"";
+    cout << "alpha = " << M << " (ASCII \"";
     for (int i=0; i<M.len; i++) cout<< M.s[i];
     cout <<"\") <vspace />" << endl;
     str proof = ECVRF_Prove(SK, str(M_input), useSWU, true);

@@ -487,7 +487,7 @@ str EdVRF_Prove(const str & SK, const str & alpha_string, bool useElligator, boo
     ZZ s = (k+c*x) % q;
     
     str proof = str(Gamma) || str(c, 16) || str(s, 32);
-    if (verbose) cout << "proof = " << proof << " <vspace />" << endl;
+    if (verbose) cout << "pi = " << proof << " <vspace />" << endl;
     
     // proof_to_hash
     unsigned char three_string = 0x03;
@@ -526,7 +526,7 @@ void generateTestVector(const char * sk_input, const char * M_input, bool useEll
     cout << "SK = " << str(SK) << " <vspace />" << endl;
     cout << "PK = " << EdDSA_KeyGen(SK) << " <vspace />" << endl;
     str M(M_input);
-    cout << "M = " << M ;
+    cout << "alpha = " << M ;
     if(M.len == 0) cout << " (the empty string)";
     else if(M.len == 1) cout << " (1 byte)";
     else cout << " (" << M.len << " bytes)";
