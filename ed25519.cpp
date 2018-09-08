@@ -211,7 +211,7 @@ public:
         p.toBytes(s);
     }
     
-    // from a big int
+    // from a big int, little-endian
     str(const ZZ & n, int nlen) {
         len = nlen;
         s = new unsigned char[len];
@@ -285,7 +285,7 @@ public:
         return ret;
     }
     
-    // to int
+    // to integer, little-endian
     ZZ toZZ() const {
         ZZ ret;
         ZZFromBytes(ret, s, len);

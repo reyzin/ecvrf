@@ -194,7 +194,7 @@ public:
         }
     }
     
-    // from a big int
+    // from a big int -- big-endian
     str(const ZZ & n, int nlen) {
         len = nlen;
         unsigned char * r = new unsigned char[len];
@@ -297,7 +297,7 @@ public:
         
     }
     
-    // to hex string -- lowercase
+    // to hex string (lowercase)
     char * toHexString() const {
         char * ret = new char[len*2+1];
         for (int i = 0; i<len; i++) {
@@ -308,7 +308,7 @@ public:
         return ret;
     }
     
-    // to int
+    // to integer -- big-endian
     ZZ toZZ() const {
         unsigned char * r = new unsigned char [len];
         reverse (r, s, len);
