@@ -328,8 +328,7 @@ public:
         }
         if (len != 33 || (s[0]!=02 && s[0]!=03)) {
             cout<<"ERROR -- CAN'T CONVERT TO EC POINT\n";
-            isValid = false;
-            return pointP256();
+            exit(-1);
         }
         
         ZZ xint = this->slice(1, 33).toZZ();
@@ -576,6 +575,7 @@ void testECDSAExample (const char * sk_input, const char* M_input, const char * 
         cout << PK;
         cout<<pk_value;
         cout<<endl;
+        exit(-1);
     }
     
     str M(M_input);
@@ -587,6 +587,7 @@ void testECDSAExample (const char * sk_input, const char* M_input, const char * 
             cout<<endl<<"ERROR: Sig = ";
             cout<<sig;
             cout<<endl;
+            exit(-1);
         }
     }
 
@@ -596,30 +597,31 @@ void testECDSAExample (const char * sk_input, const char* M_input, const char * 
         cout<<endl<<"ERROR: ProofNoSWU = ";
         cout<<proof;
         cout<<endl;
+        exit(-1);
     }
     if(!ECVRF_Verify(proof, PK, M, false)) {
         cout<<endl<<"ERROR: Verification no SWU"<<endl;
-    };
+        exit(-1);
+    }
      
 
-    proof = ECVRF_Prove(SK, M, true, false); // yes elligator
+    proof = ECVRF_Prove(SK, M, true, false); // yes SWU
     if(proof!=proofSWU_value) {
         cout<<endl<<"ERROR: ProofSWU = ";
         cout<<proof;
         cout<<endl;
+        exit(-1);
     }
     if(!ECVRF_Verify(proof, PK, M, true)) {
         cout<<endl<<"ERROR: Verification yes SWU"<<endl;
-    };
+        exit(-1);
+    }
     
 }
-int main()
-{
-    
-    initialize();
-    
-    // Examples are from https://tools.ietf.org/html/rfc6979#appendix-A.2.5; vrf values are our own
 
+void test () {
+    // Examples are from https://tools.ietf.org/html/rfc6979#appendix-A.2.5; vrf values are our own
+    
     testECDSAExample("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
                      "73616D706C65", // ascii "sample"
                      "0360FED4BA255A9D31C961EB74C6356D68C049B8923B61FA6CE669622E60F29FB6",
@@ -638,7 +640,7 @@ int main()
     // This example is from ANSI X9.62 2005 L.4.2
     ZZ ANSIX962sk =  conv<ZZ>("20186677036482506117540275567393538695075300175221296989956723148347484984008");
     str ANSIX962SK(ANSIX962sk, 32);
-
+    
     
     testECDSAExample (ANSIX962SK.toHexString(),
                       "4578616D706C65206F66204543445341207769746820616E736970323536723120616E64205348412D323536", // ascii "Example of ECDSA with ansix9p256r1 and SHA-256"
@@ -648,6 +650,15 @@ int main()
                       "035e844533a7c5109ab3dffd04f2ef0d38d679101124f15243199ce92f0f29477cd29f8754f3bbdea3dd129560e9ba0c73ae7894a8d0c0e1ac01e5c2685da67009d96e6ccdb634c7e0c5f38fa3e4908c02"
                       );
     
+}
+
+
+void generateVectors() {
+    // This example is from ANSI X9.62 2005 L.4.2
+    ZZ ANSIX962sk =  conv<ZZ>("20186677036482506117540275567393538695075300175221296989956723148347484984008");
+    str ANSIX962SK(ANSIX962sk, 32);
+
+  
     cout<<"<section title=\"ECVRF-P256-SHA256-TAI\">"<<endl;
     cout<<"<t>These two example secret keys and messages are taken from Appendix A.2.5 of <xref target=\"RFC6979\"/>.</t>"<<endl;
     generateTestVector("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
@@ -674,4 +685,13 @@ int main()
                        "4578616D706C65206F66204543445341207769746820616E736970323536723120616E64205348412D323536", true);
     cout<<"</section>"<<endl;
 
+}
+
+int main()
+{
+    
+    initialize();
+    test();
+    generateVectors();
+    
 }
