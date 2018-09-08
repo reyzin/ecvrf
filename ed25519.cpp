@@ -1,7 +1,7 @@
 /**
  !!!!!!!!!!!!!!!!!!!!!!!!! WARNING !!!!!!!!!!!!!!!!!!!!!!!!!
  THIS CODE IS INSECURE AND NOT TO BE USED FOR ACTUAL CRYPTO!!!
- IT IS ALSO INEFFICIENT AND COBBLED TOGETHER IN ONE DAY!!! DO NOT USE IT!!
+ IT IS ALSO INEFFICIENT AND COBBLED TOGETHER JUST TO GET IT WORKING!!! DO NOT USE IT!!!
  It was written by Leo Reyzin as a reference implementation only, in order to generate test vectors.
  */
 
@@ -35,7 +35,7 @@ For more information, please refer to <http://unlicense.org>
 /**
  !!!!!!!!!!!!!!!!!!!!!!!!! WARNING !!!!!!!!!!!!!!!!!!!!!!!!!
  THIS CODE IS INSECURE AND NOT TO BE USED FOR ACTUAL CRYPTO!!!
- IT IS ALSO INEFFICIENT AND COBBLED TOGETHER IN ONE DAY!!! DO NOT USE IT!!
+ IT IS ALSO INEFFICIENT AND COBBLED TOGETHER JUST TO GET IT WORKING!!! DO NOT USE IT!!!
  It was written by Leo Reyzin as a reference implementation only, in order to generate test vectors.
  */
 
