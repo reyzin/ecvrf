@@ -8,7 +8,7 @@ p256.o: p256.cpp sha256.h
 	$(CC) -c -o $@ $< $(CFLAGS)
 sha256.o: sha256.c sha256.h
 	$(CC) -c -o $@ $< $(CFLAGS)
-ed25518.o: ed25519.cpp sha512.h
+ed25519.o: ed25519.cpp sha512.h
 	$(CC) -c -o $@ $< $(CFLAGS)
 sha512.o: sha512.c sha512.h
 	$(CC) -c -o $@ $< $(CFLAGS)
