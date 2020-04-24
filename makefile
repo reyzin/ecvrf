@@ -1,5 +1,5 @@
 CC=g++
-CFLAGS=-I.
+CFLAGS=-I. -std=c++11
 LFLAGS=-lntl -lgmp
 DEPS = sha256.h sha512.h
 
