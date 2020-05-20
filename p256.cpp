@@ -397,14 +397,15 @@ void initialize() {
 }
 
 ZZ Nonce_Generation(const str & sk_string, const str & h_string) {
-    str reduced_h_string = str((h_string.toZZ() % q), 32);
+    str h1 = h_string.hash();
+    str reduced_h1 = str((h1.toZZ() % q), 32);
     str V(0x01, 32);
     str K(0x00, 32);
     str zero_string = str((unsigned char)0x00);
     str one_string = str((unsigned char)0x01);
-    K = (V || zero_string || sk_string || reduced_h_string).HMAC(K);
+    K = (V || zero_string || sk_string || reduced_h1).HMAC(K);
     V = V.HMAC(K);
-    K = (V || one_string || sk_string || reduced_h_string).HMAC(K);
+    K = (V || one_string || sk_string || reduced_h1).HMAC(K);
     V = V.HMAC(K);
     ZZ ret;
     while(true) {
@@ -418,14 +419,13 @@ ZZ Nonce_Generation(const str & sk_string, const str & h_string) {
 
 str ECDSA_Sign(const str & SK, const str & M) {
     // From https://tools.ietf.org/html/rfc6979#section-2.4
-    str h_string = M.hash();
-    ZZ k = Nonce_Generation(SK, h_string);
+    ZZ k = Nonce_Generation(SK, M);
     ZZ r =  conv<ZZ>((B*k).x) % q;
     ZZ s;
     {
         // change the modulus to q
         ZZ_pPush push(q);
-        ZZ_p smod = ((conv<ZZ_p>(h_string.toZZ())+conv<ZZ_p>(SK.toZZ())*conv<ZZ_p>(r)))/conv<ZZ_p>(k);
+        ZZ_p smod = ((conv<ZZ_p>(M.hash().toZZ())+conv<ZZ_p>(SK.toZZ())*conv<ZZ_p>(r)))/conv<ZZ_p>(k);
         s = conv<ZZ>(smod);
         // At this point push will get destroyed, will bring the modulus back to p
     }
@@ -627,15 +627,15 @@ void test () {
                      "0360FED4BA255A9D31C961EB74C6356D68C049B8923B61FA6CE669622E60F29FB6",
                      //"882905F1227FD620FBF2ABF21244F0BA83D0DC3A9103DBBEE43A1FB858109DB4",
                      "EFD48B2AACB6A8FD1140DD9CD45E81D69D2C877B56AAF991C34D0EA84EAF3716F7CB1C942D657C41D436C7A1B6E29F65F3E900DBB9AFF4064DC4AB2F843ACDA8",
-                     "029BDCA4CC39E57D97E2F42F88BCF0ECB1120FB67EB408A856050DBFBCBF57C524193B7A850195EF3D5329018A8683114CB446C33FE16EBCC0BC775B043B5860DCB2E553D91268281688438DF9394103AB",
-                     "021D684D682E61DD76C794EEF43988A2C61FBDB2AF64FBB4F435CC2A842B0024C35641FE838A72D0D9BC1BCF032F895F3B3F4C79D0F8F9D5705D83181FE82E19F49619EB8290930809B2B9651786E4F945");
+                     "029bdca4cc39e57d97e2f42f88bcf0ecb1120fb67eb408a856050dbfbcbf57c524347fc46ccd87843ec0a9fdc090a407c6fbae8ac1480e240c58854897eabbc3a7bb61b201059f89186e7175af796d65e7",
+                     "021d684d682e61dd76c794eef43988a2c61fbdb2af64fbb4f435cc2a842b0024c3b3056b7310e0130317274a58e57317c469b46fe5ab6a34463d7ecb2a7ae1d808381f53c0f6aaaebe62195cfd14526f03");
     testECDSAExample("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
                      "74657374", // ascii "test"
                      "0360FED4BA255A9D31C961EB74C6356D68C049B8923B61FA6CE669622E60F29FB6",
                      //"882905F1227FD620FBF2ABF21244F0BA83D0DC3A9103DBBEE43A1FB858109DB4",
                      "F1ABB023518351CD71D881567B1EA663ED3EFCF6C5132B354F28D3B0B7D38367019F4113742A2B14BD25926B49C649155F267E60D3814B4C0CC84250E46F0083",
-                     "03873A1CCE2CA197E466CC116BCA7B1156FFF599BE67EA40B17256C4F34BA2549C9C8B100049E76661DBCF6393E4D625597ED21D4DE684E08DC6817B60938F3FF4148823EA46A47FA8A4D43F5FA6F77DC8",
-                     "0376B758F457D2CABDFAEB18700E46E64F073EB98C119DEE4DB6C5BB1EAF677806895AB451335F6ADB792D40C68351929FCE44068FFDCBBEAC12F058B0365856ED5D86AADBA1F54C9DB13F9C8759589609");
+                     "03873a1cce2ca197e466cc116bca7b1156fff599be67ea40b17256c4f34ba2549c94ffd2b31588b5fe034fd92c87de5b520b12084da6c4ab63080a7c5467094a1ee84b80b59aca54bba2e2baa0d108191b",
+                     "0376b758f457d2cabdfaeb18700e46e64f073eb98c119dee4db6c5bb1eaf67780654504c6e583fd6eb129195b1836f91a6dd16504f957c8dedb653806952e3b0217ef187b87b9dda851f0a515f4dcc09d1");
     
     // This example is from ANSI X9.62 2005 L.4.2
     ZZ ANSIX962sk =  conv<ZZ>("20186677036482506117540275567393538695075300175221296989956723148347484984008");
@@ -646,8 +646,8 @@ void test () {
                       "4578616D706C65206F66204543445341207769746820616E736970323536723120616E64205348412D323536", // ascii "Example of ECDSA with ansix9p256r1 and SHA-256"
                       "03596375E6CE57E0F20294FC46BDFCFD19A39F8161B58695B3EC5B3D16427C274D",
                       NULL,
-                      "02abe3ce3b3aa2ab3c6855a7e729517ebfab6901c2fd228f6fa066f15ebc9b9d41fd212750d9ff775527943049053a77252e9fa59e332a2e5d5db6d0be734076e98befcdefdcbaf817a5c13d4e45fbf9bc",
-                      "035e844533a7c5109ab3dffd04f2ef0d38d679101124f15243199ce92f0f29477cd29f8754f3bbdea3dd129560e9ba0c73ae7894a8d0c0e1ac01e5c2685da67009d96e6ccdb634c7e0c5f38fa3e4908c02"
+                      "02abe3ce3b3aa2ab3c6855a7e729517ebfab6901c2fd228f6fa066f15ebc9b9d415a680736f7c33f6c796e367f7b2f467026495907affb124be9711cf0e2d05722d3a33e11d0c5bf932b8f0c5ed1981b64",
+                      "035e844533a7c5109ab3dffd04f2ef0d38d679101124f15243199ce92f0f29477ca8e8f01b40c77c61a169ad6db9d76fae7938e94a4338bca9c586c8e266ead7a6b24b769d3d34efc85f6cdb82d96bb717"
                       );
     
 }

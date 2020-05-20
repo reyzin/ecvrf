@@ -666,11 +666,46 @@ void generateVectors() {
     cout<<"</section>"<<endl;
 }
 
+void generateRandomElligatorTestVector() {
+    // A random sk
+    char sk_string[65];
+    sk_string[64]='\0';
+    for(int i=0; i<8; i++) {
+        sprintf(sk_string+8*i, "%08x", rand());
+    }
+    
+    // a random message of length 0--49 bytes
+    int len = rand()%50;
+    char * m_string = new char[2*len+1];
+    m_string[2*len]='\0';
+    for(int i=0; i<len; i++) {
+        sprintf(m_string+2*i, "%02x", rand()%256);
+    }
+    
+
+    str SK(sk_string);
+    cout << SK << endl;
+    str M(m_string);
+    cout << M.len << " " << M << endl;
+    cout << EdVRF_Prove(SK, M, true, false) << endl << endl;
+    
+/*    cout << "SK = " EdDSA_KeyGen(str(sk_string))<<endl;
+    cout<< len << " " << m_string<<endl;
+    EdVRF_Prove(str(sk_string), str(m_string), true, true);
+    cout << endl;*/
+    delete [] m_string;
+}
+
+
 int main()
 {
     
     initialize();
     testOrder8Points();
     test();
-    generateVectors();
+    //generateVectors();
+   
+    srand(5);
+    
+    for (int i = 0; i<1000; i++) generateRandomElligatorTestVector();
 }
