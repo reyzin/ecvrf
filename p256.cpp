@@ -46,7 +46,7 @@
 NTL_CLIENT
 
 static ZZ p, q;
-static ZZ_p a, b, c;
+static ZZ_p a, b, minus_b_over_a;
 
 unsigned char hexToNum(unsigned char in) {
     if ('0'<=in && in<='9') return in-'0';
@@ -151,6 +151,15 @@ public:
         }
     }
     
+    // From C string -- a factory constructor
+    static str fromCString(const char * input) {
+        str ret;
+        ret.len = strlen(input);
+        ret.s = new unsigned char[ret.len];
+        for(int i=0; i<ret.len; i++) ret.s[i] = input[i];
+        return ret;
+    }
+    
     // From hex string
     str(const char *  input) {
         len = strlen(input)/2;
@@ -210,6 +219,18 @@ public:
         ret.len = end-begin;
         ret.s = new unsigned char[ret.len];
         memcpy(ret.s, this->s+begin, ret.len);
+        return ret;
+    }
+    
+    str strxor(const str & that) const {
+        if (len != that.len) cout<<"ERROR -- XOR APPLIED TO STRINGS OF DIFFERENT LENGTHS\n";
+
+        str ret;
+        ret.len = len;
+        ret.s = new unsigned char[len];
+        for (int i=0; i<len; i++) {
+            ret.s[i] = s[i]^that.s[i];
+        }
         return ret;
     }
     
@@ -296,7 +317,17 @@ public:
         return ret;
         
     }
-    
+
+    // concatenate with a single character
+    str operator||(char c) const {
+        str ret;
+        ret.len = this->len+1;
+        ret.s = new unsigned char[ret.len];
+        memcpy(ret.s, this->s, this->len);
+        ret.s[len]=c;
+        return ret;
+    }
+
     // to hex string (lowercase)
     char * toHexString() const {
         char * ret = new char[len*2+1];
@@ -370,7 +401,8 @@ ostream& operator<<(ostream& os, const str& s)
 }
 
 
-
+static str ECVRF_DST;
+static str SSWU_TEST_DST;
 
 void initialize() {
     ZZ powerOf2;
@@ -390,10 +422,13 @@ void initialize() {
     
     b =
     conv<ZZ_p>(conv<ZZ>( "41058363725152142129326129780047268409114441015993725554835256314039467401291"));
-    c = -b/a;
+    minus_b_over_a = -b/a;
 
     q = conv<ZZ>( "115792089210356248762697446949407573529996955224135760342422259061068512044369");
     B = pointP256(conv<ZZ_p>("48439561293906451759052585252797914202762949526041747995844080717082404635286"), conv<ZZ_p>("36134250956749795798585127919587881956611106672985015071877198253568414405109"));
+    
+    ECVRF_DST = str::fromCString("ECVRF_P256_XMD:SHA-256_SSWU_NU_") || '\2';
+    SSWU_TEST_DST = str::fromCString("P256_XMD:SHA-256_SSWU_NU_TESTGEN");
 }
 
 ZZ Nonce_Generation(const str & sk_string, const str & h_string) {
@@ -401,18 +436,16 @@ ZZ Nonce_Generation(const str & sk_string, const str & h_string) {
     str reduced_h1 = str((h1.toZZ() % q), 32);
     str V(0x01, 32);
     str K(0x00, 32);
-    str zero_string = str((unsigned char)0x00);
-    str one_string = str((unsigned char)0x01);
-    K = (V || zero_string || sk_string || reduced_h1).HMAC(K);
+    K = (V || '\0' || sk_string || reduced_h1).HMAC(K);
     V = V.HMAC(K);
-    K = (V || one_string || sk_string || reduced_h1).HMAC(K);
+    K = (V || '\1' || sk_string || reduced_h1).HMAC(K);
     V = V.HMAC(K);
     ZZ ret;
     while(true) {
         V = V.HMAC(K);
         ret = V.toZZ();
         if (ret>0 && ret<q) return ret;
-        K = (V || str(zero_string)).HMAC(K);
+        K = (V || '\0').HMAC(K);
         V = V.HMAC(K);
     }
 }
@@ -438,11 +471,9 @@ str ECDSA_KeyGen(const str & SK) {
 
 pointP256 Try_And_Increment(const str & pk_string, const str & alpha_string, bool verbose) {
     ZZ ctr(0);
-    unsigned char one_string = 0x01;
-    unsigned char two_string = 0x02;
-    unsigned char suite_string = 0x01;
+    str suite_string = str('\1');
     for (;; ctr++) {
-        str h_string = str(two_string) || (str(suite_string) || str(one_string) || pk_string || alpha_string || str(ctr, 1)).hash();
+        str h_string = str('\2') || (suite_string || '\1' || pk_string || alpha_string || str(ctr, 1) || '\0').hash();
 
         bool isValid;
         pointP256 H = h_string.toECPoint(isValid);
@@ -454,54 +485,70 @@ pointP256 Try_And_Increment(const str & pk_string, const str & alpha_string, boo
 }
 
 
-pointP256 SWU(const str & pk_string, const str & alpha_string, bool verbose) {
-    unsigned char one_string = 0x01;
-    unsigned char suite_string = 0x02;
-    unsigned char two_string = 0x02;
+ZZ_p SSWU_hash_to_field(const str & string_to_hash, const str & DST, bool verbose) {
+    int len_in_bytes = 48; // L=(256+128)/8; m==1; L==1
+    str l_i_b_str = str(ZZ(len_in_bytes),2);
+    str Z_pad = str('\0', 64);
+    str DST_prime = DST || (unsigned char)DST.len;
 
+    str b_0 = (Z_pad || string_to_hash || l_i_b_str || '\0' || DST_prime).hash();
+    str b_1 = (b_0 || '\1' || DST_prime).hash();
+    str b_2 = (b_0.strxor(b_1) || '\2' || DST_prime).hash();
+    str uniform_bytes =  (b_1 || b_2).slice(0,len_in_bytes);
+    if (verbose) cout << "In SSWU: uniform_bytes = " << uniform_bytes << " <vspace />" << endl;
+    ZZ u_int = uniform_bytes.toZZ();
+    ZZ_p u = conv<ZZ_p>(u_int);
+    if (verbose) cout << "In SSWU: u = " << str(conv<ZZ>(u), 32) << " <vspace />" << endl;
+    return u;
+}
 
-    str hash_string = (str(suite_string) || str(one_string) || pk_string || alpha_string).hash();
-    ZZ t_int = hash_string.toZZ();
-    ZZ_p t = conv<ZZ_p>(t_int);
-    if (verbose) cout << "In SWU: t = " << str(conv<ZZ>(t), 32) << " <vspace />" << endl;
-
-    ZZ_p r = -(t*t);
-    ZZ_p d = r*r+r;
-    ZZ_p d_inverse = IsZero(d) ? d : inv(d); // same as power(d, p-2);
-    ZZ_p x = c*(1+d_inverse);
-    ZZ_p w = x*x*x+a*x+b;
-    if (verbose) cout << "In SWU: w = " << str(conv<ZZ>(w), 32) << " <vspace />" << endl;
-    int jacobi = Jacobi(conv<ZZ>(w), p);
-    if (verbose) cout << "In SWU: e = " << jacobi << " <vspace />" << endl;
-
-    if (jacobi == -1) {
-        x *= r;
+pointP256 SSWU_map_to_curve(const ZZ_p & u, bool verbose) {
+    ZZ_p Z = conv<ZZ_p>(ZZ(-10));
+    ZZ_p Z_times_u_squared = Z*u*u;
+    ZZ_p tv1_inverse = Z_times_u_squared+Z_times_u_squared*Z_times_u_squared;
+    ZZ_p tv1 = IsZero(tv1_inverse) ? tv1_inverse : inv(tv1_inverse);
+    ZZ_p x = minus_b_over_a*(1+tv1);
+    if (IsZero(tv1)) x = b/(Z*a);
+    if (verbose) cout << "In SSWU: x1 = " << str(conv<ZZ>(x), 32) << " <vspace />" << endl;
+    ZZ_p gx1 = x*x*x + a*x + b;
+    if (Jacobi(conv<ZZ>(gx1), p) == 1) {
+        if (verbose) cout<< "In SSWU: gx1 is a square <vspace />" << endl;
     }
+    else {
+        if (verbose) cout<< "In SSWU: gx1 is a nonsquare <vspace />" << endl;
+        x = Z_times_u_squared*x;
+    }
+
     bool isValid;
-    pointP256 H = (str(two_string) || str(conv<ZZ>(x), 32)).toECPoint(isValid);
+    // The sign of the resulting y is not important right now, because we will make it match the sign of u
+    pointP256 H = (str('\2') || str(conv<ZZ>(x), 32)).toECPoint(isValid);
     if (!isValid) {
-        cout<<"SWU error"<<endl;
+        cout<<"SSWU error"<<endl;
         exit(-1);
     }
+    // make the signs of u and y match
+    if (bit(conv<ZZ>(u), 0)!=bit(conv<ZZ>(H.y), 0)) H.y = -H.y;
+    
     return H;
 }
 
-ZZ ECVRF_Hash_Points(const pointP256 & p1, const pointP256 & p2, const pointP256 & p3, const pointP256 & p4, unsigned char suite_string) {
-    unsigned char two_string = 0x02;
+pointP256 SSWU(const str & pk_string, const str & alpha_string, const str & DST, bool verbose) {
+    return SSWU_map_to_curve ( SSWU_hash_to_field (pk_string || alpha_string, DST, verbose), verbose);
+}
 
-    return (str(suite_string) || str(two_string) || str(p1) || str(p2) || str(p3) || str(p4)).hash().slice(0,16).toZZ();
+ZZ ECVRF_Hash_Points(const pointP256 & p1, const pointP256 & p2, const pointP256 & p3, const pointP256 & p4, str suite_string) {
+    return (suite_string || '\2'  || str(p1) || str(p2) || str(p3) || str(p4)  || '\0').hash().slice(0,16).toZZ();
 }
 
 
-str ECVRF_Prove(const str & SK, const str & alpha_string, bool useSWU, bool verbose) {
+str ECVRF_Prove(const str & SK, const str & alpha_string, bool useSSWU, bool verbose) {
     // Secret Scalar
     ZZ x = SK.toZZ();
     // public key
     str PK(B*x);
     
     // hash to curve
-    unsigned char suite_string = useSWU? 0x02 : 0x01;
-    pointP256 H = useSWU ? SWU(PK, alpha_string, verbose) : Try_And_Increment(PK, alpha_string, verbose);
+    pointP256 H = useSSWU ? SSWU(PK, alpha_string, ECVRF_DST, verbose) : Try_And_Increment(PK, alpha_string, verbose);
     
     if (verbose) cout << "H = " << str(H) << " <vspace />" << endl;
 
@@ -515,21 +562,20 @@ str ECVRF_Prove(const str & SK, const str & alpha_string, bool useSWU, bool verb
     if (verbose) cout << "U = k*B = " << str(U) << " <vspace />" << endl;
     if (verbose) cout << "V = k*H = " << str(V) << " <vspace />" << endl;
 
+    str suite_string = str(useSSWU? '\2' : '\1');
     ZZ c = ECVRF_Hash_Points(H, Gamma, U, V, suite_string);
     ZZ s = (k+c*x) % q;
 
     str proof = str(Gamma) || str(c, 16) || str(s, 32);
     if (verbose) cout << "pi = " << proof << " <vspace />" << endl;
     
-    // proof_to_hash
-    unsigned char three_string = 0x03;
-    if (verbose) cout << "beta = " << (str(suite_string) || str(three_string) || str(Gamma)).hash();
+    if (verbose) cout << "beta = " << (suite_string || '\3' || str(Gamma)  || '\0').hash();
 
     return proof;
 }
 
-bool ECVRF_Verify(const str & proof, const str & PK, const str & alpha_string, bool useSWU) {
-    unsigned char suite_string = useSWU? 0x02 : 0x01;
+bool ECVRF_Verify(const str & proof, const str & PK, const str & alpha_string, bool useSSWU) {
+    
     
     // get the pk
     bool isValid;
@@ -542,29 +588,30 @@ bool ECVRF_Verify(const str & proof, const str & PK, const str & alpha_string, b
     ZZ s = proof.slice(49, 81).toZZ();
 
     // Hash to curve
-    pointP256 H = useSWU ? SWU(PK, alpha_string, false) : Try_And_Increment(PK, alpha_string, false);
+    pointP256 H = useSSWU ? SSWU(PK, alpha_string, ECVRF_DST, false) : Try_And_Increment(PK, alpha_string, false);
 
     // Hash points
+    str suite_string = str(useSSWU? '\2' : '\1');
     ZZ cprime = ECVRF_Hash_Points(H, Gamma, B*s-Y*c, H*s-Gamma*c, suite_string);
     
     return c==cprime;
     
 }
 
-void generateTestVector(const char * sk_input, const char * M_input, bool useSWU) {
+void generateTestVector(const char * sk_input, const char * M_input, bool useSSWU) {
     str SK(sk_input);
     cout<<"<t>"<<endl;
     cout << "SK = x = " << str(SK) << " <vspace />" << endl;
     cout << "PK = " << B*SK.toZZ() << " <vspace />" << endl;
-    str M(M_input);
+    str M = str::fromCString(M_input);
     cout << "alpha = " << M << " (ASCII \"";
     for (int i=0; i<M.len; i++) cout<< M.s[i];
     cout <<"\") <vspace />" << endl;
-    str proof = ECVRF_Prove(SK, str(M_input), useSWU, true);
+    str proof = ECVRF_Prove(SK, M, useSSWU, true);
     cout<<"</t>"<<endl;
 }
 
-void testECDSAExample (const char * sk_input, const char* M_input, const char * pk_value,  const char* sig_value,const char* proofNoSWU_value, const char* proofSWU_value) {
+void testECDSAExample (const char * sk_input, const char* M_input, const char * pk_value,  const char* sig_value,const char* proofNoSSWU_value, const char* proofSSWU_value) {
    
     str SK(sk_input);
     str PK = ECDSA_KeyGen(SK);
@@ -578,7 +625,7 @@ void testECDSAExample (const char * sk_input, const char* M_input, const char * 
         exit(-1);
     }
     
-    str M(M_input);
+    str M=str::fromCString(M_input);
 
     if (sig_value!=NULL) {
         str sig = ECDSA_Sign(SK, M);
@@ -592,62 +639,98 @@ void testECDSAExample (const char * sk_input, const char* M_input, const char * 
     }
 
     // Now evaluate the VRF on the same example and test the result
-    str proof = ECVRF_Prove(SK, M, false, false); // no SWU
-    if(proof!=proofNoSWU_value) {
-        cout<<endl<<"ERROR: ProofNoSWU = ";
+    str proof = ECVRF_Prove(SK, M, false, false); // no SSWU
+    if(proof!=proofNoSSWU_value) {
+        cout<<endl<<"ERROR: ProofNoSSWU = ";
         cout<<proof;
         cout<<endl;
         exit(-1);
     }
     if(!ECVRF_Verify(proof, PK, M, false)) {
-        cout<<endl<<"ERROR: Verification no SWU"<<endl;
+        cout<<endl<<"ERROR: Verification no SSWU"<<endl;
         exit(-1);
     }
-     
 
-    proof = ECVRF_Prove(SK, M, true, false); // yes SWU
-    if(proof!=proofSWU_value) {
-        cout<<endl<<"ERROR: ProofSWU = ";
+    proof = ECVRF_Prove(SK, M, true, false); // yes SSWU
+    if(proof!=proofSSWU_value) {
+        cout<<endl<<"ERROR: ProofSSWU = ";
         cout<<proof;
         cout<<endl;
         exit(-1);
     }
     if(!ECVRF_Verify(proof, PK, M, true)) {
-        cout<<endl<<"ERROR: Verification yes SWU"<<endl;
+        cout<<endl<<"ERROR: Verification yes SSWU"<<endl;
         exit(-1);
     }
     
 }
 
-void test () {
+bool testSSWUExample (const char * M_input, const char * u, const char * x, const char * y) {
+    ZZ_p u_res = SSWU_hash_to_field(str::fromCString(M_input), SSWU_TEST_DST, false);
+    if (conv<ZZ>(u_res) != str(u).toZZ()) {
+        cout << "ERROR SSWU_hash_to_field on example \"" << M_input << "\"" << endl;
+        return false;
+    }
+    else {
+        pointP256 output = SSWU_map_to_curve(u_res, false);
+        if (conv<ZZ>(output.x) != str(x).toZZ() || conv<ZZ>(output.y) != str(y).toZZ()) {
+            cout << "ERROR SSWU_hash_to_field on example \"" << M_input << "\"" << endl;
+            return false;
+        }
+    }
+    return true;
+}
+
+void testSSWU() {
+    /* These test vectors are from CFRG hash-to-curve draft https://github.com/cfrg/draft-irtf-cfrg-hash-to-curve/blob/8ec5a3fdcbfc05d00ab18aa419ddfc895cb5b686/draft-irtf-cfrg-hash-to-curve.md#p256_xmdsha-256_sswu_nu_ */
+    testSSWUExample("",
+                      "8edbab803386a426e41ed452e269ecaf7963fcf2428572122fd806f8124a74c1",
+                      "2063ed79bfbd8dcb7ee0ea2f3a0859490e314bc44c52818810e7050fc2fef9d2",
+                      "b1b8d127e418d55f3e24aff4dd3b93f87b0f9010b57750ae5364369a282b0c01");
+    testSSWUExample("abc",
+                      "5e62db94e1b65baef703b29e9ec76229d425ec11f68fd2826650892e94f41617",
+                      "fa966fde8359c530de36964554878add0d66ab91a4941c778a6ca2ef940f51da",
+                      "a443c5d7acb4584c5482744d7c277c402f974ecb3c5a9e6cc32891a7d4395cc1"
+                      );
+    testSSWUExample("abcdef0123456789",
+                      "2b65b29127cfcc0d932b0353989def6f9eff7d8fc439b24ba96a3316d5b9c51e",
+                      "1f629999e7ae72560ef6753c174e59e8cbb8012dd19ab422e07c438dcf50496c",
+                      "307d198488b34f1c901b83e80eac513a91b2deb18723bb971adb7dca8e3d406a"
+                      );
+   testSSWUExample("a512_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                     "0fb249d711473b504acf7a1e6a87e31d26f4a7aec11ff673e7ae3b80f421b958",
+                     "191231cd9517dfa132816a24860f55db605e4f5a190ffebf0b9bbb232fd5ae88",
+                     "f4aa03d54f7c2da1da7d597678825bc929d339d1c9bf43edfe1461b7c4862ce2"
+                     );
+
+}
+
+void testECDSAandECVRF () {
     // Examples are from https://tools.ietf.org/html/rfc6979#appendix-A.2.5; vrf values are our own
     
     testECDSAExample("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
-                     "73616D706C65", // ascii "sample"
+                     "sample",
                      "0360FED4BA255A9D31C961EB74C6356D68C049B8923B61FA6CE669622E60F29FB6",
-                     //"882905F1227FD620FBF2ABF21244F0BA83D0DC3A9103DBBEE43A1FB858109DB4",
                      "EFD48B2AACB6A8FD1140DD9CD45E81D69D2C877B56AAF991C34D0EA84EAF3716F7CB1C942D657C41D436C7A1B6E29F65F3E900DBB9AFF4064DC4AB2F843ACDA8",
-                     "029bdca4cc39e57d97e2f42f88bcf0ecb1120fb67eb408a856050dbfbcbf57c524347fc46ccd87843ec0a9fdc090a407c6fbae8ac1480e240c58854897eabbc3a7bb61b201059f89186e7175af796d65e7",
-                     "021d684d682e61dd76c794eef43988a2c61fbdb2af64fbb4f435cc2a842b0024c3b3056b7310e0130317274a58e57317c469b46fe5ab6a34463d7ecb2a7ae1d808381f53c0f6aaaebe62195cfd14526f03");
+                     "035b5c726e8c0e2c488a107c600578ee75cb702343c153cb1eb8dec77f4b5071b498e7c291a16dafb9ccff8c2ae1f039fa92a328d5f7e0d483ee18353067a13f699944a78892ff24939bcd044827eef884",
+                     "0331d984ca8fece9cbb9a144c0d53df3c4c7a33080c1e02ddb1a96a365394c7888a39dfe7432f119228473f37db3f87ca470c63b0237432a791f18f823c1215e276b7ac0962725ba8daec2bf90c0ccc91a");
     testECDSAExample("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
-                     "74657374", // ascii "test"
+                     "test",
                      "0360FED4BA255A9D31C961EB74C6356D68C049B8923B61FA6CE669622E60F29FB6",
-                     //"882905F1227FD620FBF2ABF21244F0BA83D0DC3A9103DBBEE43A1FB858109DB4",
                      "F1ABB023518351CD71D881567B1EA663ED3EFCF6C5132B354F28D3B0B7D38367019F4113742A2B14BD25926B49C649155F267E60D3814B4C0CC84250E46F0083",
-                     "03873a1cce2ca197e466cc116bca7b1156fff599be67ea40b17256c4f34ba2549c94ffd2b31588b5fe034fd92c87de5b520b12084da6c4ab63080a7c5467094a1ee84b80b59aca54bba2e2baa0d108191b",
-                     "0376b758f457d2cabdfaeb18700e46e64f073eb98c119dee4db6c5bb1eaf67780654504c6e583fd6eb129195b1836f91a6dd16504f957c8dedb653806952e3b0217ef187b87b9dda851f0a515f4dcc09d1");
+                     "034dac60aba508ba0c01aa9be80377ebd7562c4a52d74722e0abae7dc3080ddb56c874cc95b7d29a6a65cb518fe6f4418256385f12b1eccbad023c901bb983ff707b109b3a3b526ca3a1e8661f7b8481a2",
+                     "03f814c0455d32dbc75ad3aea08c7e2db31748e12802db23640203aebf1fa8db2721e0499b7cecd68027a82f6095da076625a5f2f62908f1c283d5ee9b9e852d85bedf64f2452a4e5094729e101824443e");
     
     // This example is from ANSI X9.62 2005 L.4.2
     ZZ ANSIX962sk =  conv<ZZ>("20186677036482506117540275567393538695075300175221296989956723148347484984008");
     str ANSIX962SK(ANSIX962sk, 32);
-    
-    
+
     testECDSAExample (ANSIX962SK.toHexString(),
-                      "4578616D706C65206F66204543445341207769746820616E736970323536723120616E64205348412D323536", // ascii "Example of ECDSA with ansix9p256r1 and SHA-256"
+                      "Example using ECDSA key from Appendix L.4.2 of ANSI.X9-62-2005",
                       "03596375E6CE57E0F20294FC46BDFCFD19A39F8161B58695B3EC5B3D16427C274D",
                       NULL,
-                      "02abe3ce3b3aa2ab3c6855a7e729517ebfab6901c2fd228f6fa066f15ebc9b9d415a680736f7c33f6c796e367f7b2f467026495907affb124be9711cf0e2d05722d3a33e11d0c5bf932b8f0c5ed1981b64",
-                      "035e844533a7c5109ab3dffd04f2ef0d38d679101124f15243199ce92f0f29477ca8e8f01b40c77c61a169ad6db9d76fae7938e94a4338bca9c586c8e266ead7a6b24b769d3d34efc85f6cdb82d96bb717"
+                      "03d03398bf53aa23831d7d1b2937e005fb0062cbefa06796579f2a1fc7e7b8c6679d92353c8a4fdfddb2a8540094b686cb5fb50f730d833a098a0399ccad32f3fec4da2299891fc75ebda42baeb65e8c11",
+                      "039f8d9cdc162c89be2871cbcb1435144739431db7fab437ab7bc4e2651a9e99d5288aac70a5e4bd07df303c1d460eb6336bb5fa95436a07c2f6b7aec6fef7cc4846ea901ee1e238dee12bf752029b0b2e"
                       );
     
 }
@@ -662,36 +745,36 @@ void generateVectors() {
     cout<<"<section title=\"ECVRF-P256-SHA256-TAI\">"<<endl;
     cout<<"<t>These two example secret keys and messages are taken from Appendix A.2.5 of <xref target=\"RFC6979\"/>.</t>"<<endl;
     generateTestVector("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
-                       "73616D706C65", false);
+                       "sample", false);
     generateTestVector("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
-                       "74657374", false);
+                       "test", false);
     
-    cout<<"<t>This example secret key and message are taken from Appendix L.4.2 of <xref target=\"ANSI.X9-62-2005\"/>.</t>"<<endl;
+    cout<<"<t>This example secret key is taken from Appendix L.4.2 of <xref target=\"ANSI.X9-62-2005\"/>.</t>"<<endl;
 
     generateTestVector(ANSIX962SK.toHexString(),
-                       "4578616D706C65206F66204543445341207769746820616E736970323536723120616E64205348412D323536", false);
+                       "Example using ECDSA key from Appendix L.4.2 of ANSI.X9-62-2005", false);
 
     cout<<"</section>"<<endl;
-    cout<<"<section title=\"ECVRF-P256-SHA256-SWU\">"<<endl;
+    cout<<"<section title=\"ECVRF-P256-SHA256-SSWU\">"<<endl;
     cout<<"<t>These two example secret keys and messages are taken from Appendix A.2.5 of <xref target=\"RFC6979\"/>.</t>"<<endl;
     
     generateTestVector("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
-                       "73616D706C65", true);
+                       "sample", true);
     generateTestVector("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
-                       "74657374", true);
+                       "test", true);
     
-    cout<<"<t>This example secret key and message are taken from Appendix L.4.2 of <xref target=\"ANSI.X9-62-2005\"/>.</t>"<<endl;
+    cout<<"<t>This example secret key is taken from Appendix L.4.2 of <xref target=\"ANSI.X9-62-2005\"/>.</t>"<<endl;
     generateTestVector(ANSIX962SK.toHexString(),
-                       "4578616D706C65206F66204543445341207769746820616E736970323536723120616E64205348412D323536", true);
+                       "Example using ECDSA key from Appendix L.4.2 of ANSI.X9-62-2005", true);
     cout<<"</section>"<<endl;
-
 }
 
 int main()
 {
     
     initialize();
-    test();
+    testSSWU();
+    testECDSAandECVRF();
     generateVectors();
     
 }

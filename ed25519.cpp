@@ -47,7 +47,7 @@ For more information, please refer to <http://unlicense.org>
 NTL_CLIENT
 
 static ZZ p, q, cofactor;
-static ZZ_p A, d;
+static ZZ_p A, d, sqrt_minus_A_plus_2;
 
 unsigned char hexToNum(unsigned char in) {
     if ('0'<=in && in<='9') return in-'0';
@@ -72,8 +72,8 @@ class pointEd25519 {
      curve is -x^2+y^2 = 1+dx^2y^2, where d = -121665/121666
      encoding: edwards. y followed by x parity bit. Point at infinity: y = 1, x = 0.
      birationally equivalent to montgomery: u, v v2 = u(u2 + Au + 1) (in Mongomery, we store only u as PK).
-     Conversion x=(u/v) * \sqrt(-486664),y=(u-1)/(u+1)
-     To go back: u = (1+y)/(1-y) whenever (x, y) is not the point at infinity).
+     Conversion x=(u/v) * sqrt_minus_A_plus_2,y=(u-1)/(u+1) (where minus_A_plus_2 = -486664)
+     To go back: u = (1+y)/(1-y), v = sqrt_minus_A_plus_2*u/x, whenever (x, y) is not the point at infinity).
      */
 
 public:
@@ -188,7 +188,19 @@ public:
     unsigned char * s;
     int len;
     
-    // From hex string
+    // NOTE: REQUIRES SOURCE AND DESTINATION TO BE NONOVERLAPPING
+    static void reverse (unsigned char * dest, unsigned char * source, int len) {
+        if ((dest<=source && dest+len>source) || (source<=dest && source+len>dest) ) {
+            cout<<"CAN'T USE REVERSE WITH OVERLAPPING SOURCE AND DESTINATION\n";
+            exit(-1);
+        }
+        for (int i = 0; i<len; i++){
+            dest[i] = source[len-1-i];
+        }
+    }
+    
+
+    // From hex string -- little endian
     str(const char *  input) {
         len = strlen(input)/2;
         s = new unsigned char[len];
@@ -196,13 +208,32 @@ public:
             s[i/2] = hexToNum(input[i])*16+hexToNum(input[i+1]);
         }
     }
-    
+
+    // From C string -- a factory constructor
+    static str fromCString(const char * input) {
+        str ret;
+        ret.len = strlen(input);
+        ret.s = new unsigned char[ret.len];
+        for(int i=0; i<ret.len; i++) ret.s[i] = input[i];
+        return ret;
+    }
+
     // From a single octet
     str(unsigned char c) {
         len = 1;
         s = new unsigned char[len];
         s[0]=c;
     }
+    
+    // From a single octet, repeated num times
+    str(unsigned char c, int num) {
+        len = num;
+        s = new unsigned char[len];
+        for (int i=0; i<len; i++) {
+            s[i]=c;
+        }
+    }
+
     
     // from an EC point
     str(const pointEd25519 & p) {
@@ -226,6 +257,19 @@ public:
         memcpy(ret.s, this->s+begin, ret.len);
         return ret;
     }
+    
+    str strxor(const str & that) const {
+        if (len != that.len) cout<<"ERROR -- XOR APPLIED TO STRINGS OF DIFFERENT LENGTHS\n";
+
+        str ret;
+        ret.len = len;
+        ret.s = new unsigned char[len];
+        for (int i=0; i<len; i++) {
+            ret.s[i] = s[i]^that.s[i];
+        }
+        return ret;
+    }
+
     
     str hash() const {
         str ret;
@@ -274,6 +318,17 @@ public:
         
     }
     
+    // concatenate with a single character
+    str operator||(char c) const {
+        str ret;
+        ret.len = this->len+1;
+        ret.s = new unsigned char[ret.len];
+        memcpy(ret.s, this->s, this->len);
+        ret.s[len]=c;
+        return ret;
+    }
+
+    
     // to hex string (lowercase)
     char * toHexString() const {
         char * ret = new char[len*2+1];
@@ -291,6 +346,17 @@ public:
         ZZFromBytes(ret, s, len);
         return ret;
     }
+
+    // to integer, big-endian
+    ZZ toZZ_bigEndian() const {
+        unsigned char * r = new unsigned char [len];
+        reverse (r, s, len);
+        ZZ ret;
+        ZZFromBytes(ret, r, len);
+        delete [] r;
+        return ret;
+    }
+
     
     // to EC point
     pointEd25519 toECPoint(bool & isValid) const {
@@ -368,7 +434,8 @@ str EdDSA_KeyGen(const str & SK) {
     return str(B*s);
 }
 
-
+static str ECVRF_DST;
+static str ELLIGATOR_TEST_DST;
 
 void initialize() {
     power2(p, 255);
@@ -376,6 +443,8 @@ void initialize() {
     ZZ_p::init(p);
     
     d=ZZ_p(-121665)/ZZ_p(121666);
+    
+    sqrt_minus_A_plus_2 = conv<ZZ_p>("6853475219497561581579357271197624642482790079785650197046958215289687604742");
     
     A = ZZ_p(486662);
     
@@ -385,14 +454,17 @@ void initialize() {
     
     power2(q, 252);
     q+=conv<ZZ>("27742317777372353535851937790883648493");
+
+    ECVRF_DST = str::fromCString("ECVRF_edwards25519_XMD:SHA-512_ELL2_NU_") || '\4';
+    ELLIGATOR_TEST_DST = str::fromCString("edwards25519_XMD:SHA-512_ELL2_NU_TESTGEN");
+
 }
 
 pointEd25519 Try_And_Increment(const str & pk_string, const str & alpha_string, bool verbose) {
+    str suite_string = str('\3');
     ZZ ctr(0);
-    unsigned char one_string = 0x01;
-    unsigned char suite_string = 0x03;
     for (;; ctr++) {
-        str h_string = (str(suite_string) || str(one_string) || pk_string || alpha_string || str(ctr, 1)).hash();
+        str h_string = (suite_string || '\1' || pk_string || alpha_string || str(ctr, 1) || '\0').hash();
 
         pointEd25519 * H = pointEd25519::string_to_point(h_string.s);
         if (H!=NULL) {
@@ -408,44 +480,70 @@ pointEd25519 Try_And_Increment(const str & pk_string, const str & alpha_string, 
 }
 
 
-pointEd25519 Elligator2(const str & pk_string, const str & alpha_string, bool verbose) {
-    unsigned char one_string = 0x01;
-    unsigned char suite_string = 0x04;
+ZZ_p Elligator2_hash_to_field(const str & string_to_hash, const str & DST, bool verbose) {
+    int len_in_bytes = 48; // L=(256+128)/8; m==1; L==1
+    str l_i_b_str = str('\0') || (unsigned char)len_in_bytes; // manual, because this is big endian
+    str Z_pad = str('\0', 128);
+    str DST_prime = DST || (unsigned char)DST.len;
 
-    str hash_string = (str(suite_string) || str(one_string) || pk_string || alpha_string).hash();
+    str b_0 = (Z_pad || string_to_hash || l_i_b_str || '\0' || DST_prime).hash();
+    str b_1 = (b_0 || '\1' || DST_prime).hash();
+    str uniform_bytes =  b_1.slice(0, len_in_bytes);
+    if (verbose) cout << "In Elligator: uniform_bytes = " << uniform_bytes << " <vspace />" << endl;
+    ZZ u_int = uniform_bytes.toZZ_bigEndian();
+    ZZ_p u = conv<ZZ_p>(u_int);
+    if (verbose) cout << "In Elligator: u = " << str(conv<ZZ>(u), 32) << " <vspace />" << endl;
+    return u;
+}
 
-    unsigned char x0 = hash_string.s[31] & 0x80;
-    hash_string.s[31] &= 0x7F;
-    ZZ r_int = hash_string.slice(0, 32).toZZ();
-    ZZ_p r = conv<ZZ_p>(r_int);
-    if (verbose) cout << "In Elligator: r = " << str(r_int, 32) << " <vspace />" << endl;
-
-    
-    ZZ_p u = - A / (1 + 2*r*r );
-    ZZ_p w = u * (u*u + A*u + 1);
-    if (verbose) cout << "In Elligator: w = " << str(conv<ZZ>(w), 32) << " <vspace />" << endl;
-    if (Jacobi(conv<ZZ>(w), p) != 1) {
-        if (verbose) cout << "In Elligator: e = -1" << " <vspace />" << endl;
-        u = -A-u;
+pointEd25519 Elligator2_map_to_curve_and_clear_cofactor(const ZZ_p & input_field_element, bool verbose) {
+    ZZ_p x1 = - A / (1 + 2*input_field_element*input_field_element); // this is the candidate Montgomery u coordinate
+    ZZ_p gx = x1 * (x1*x1 + A*x1 + 1); // gx1 for now; may change to gx2 depending on Jacobi
+    if (verbose) cout << "In Elligator: gx1 = " << str(conv<ZZ>(gx), 32) << " <vspace />" << endl;
+    int jacobi = Jacobi(conv<ZZ>(gx), p);
+    ZZ_p montgomery_u; // this is the final Montgomery u coordinate; it's called x in hash-to-curve draft
+    if (jacobi == 1) {
+        if (verbose) cout<< "In Elligator: gx1 is a square <vspace />" << endl;
+        montgomery_u = x1;
     }
-    else if (verbose) cout << "In Elligator: e = 1" << " <vspace />" << endl;
-    ZZ_p y = (u-1)/(u+1);
-    
-    str H_string(conv<ZZ>(y), 32);
-    //H_string.s[31]|=x0;
+    else {
+        if (verbose) cout << "In Elligator: gx1 is a nonsquare <vspace />" << endl;
+        montgomery_u = -A-x1;
+        gx = montgomery_u * (montgomery_u*montgomery_u + A*montgomery_u + 1);
+    }
+    ZZ_p edwards_y = (montgomery_u-1)/(montgomery_u+1); // convert from Montgomery to Edwards via the birational map
+    str H_string(conv<ZZ>(edwards_y), 32);
     bool isValid;
     pointEd25519 H = H_string.toECPoint(isValid);
     if (!isValid) {
-        cout<<"Elligator error"<<endl;
+        cout<<"Elligator error 1"<<endl;
         exit(-1);
     }
+    // H now has the correct y coordinate; x coordinate may have the wrong sign
+    // To find if the sign is correct, convert the x-coordinate to Montomery and check
+    ZZ_p montgomery_v = sqrt_minus_A_plus_2*montgomery_u/H.x;
+    // Sanity check: v should be the square root of gx
+    if (montgomery_v*montgomery_v != gx) {
+        cout<< "Elligator error 2"<<endl;
+    }
+    // Check if the sign needs to be changed
+    int sgn0 = bit(conv<ZZ>(montgomery_v), 0);
+    if ((jacobi == 1 && sgn0==0) || (jacobi == -1 && sgn0==1)) {
+        H.x = -H.x;
+    }
+    // clear cofactor
     return H*cofactor;
 }
 
-ZZ EdVRF_Hash_Points(const pointEd25519 & p1, const pointEd25519 & p2, const pointEd25519 & p3, const pointEd25519 & p4, unsigned char suite_string) {
-    unsigned char two_string = 0x02;
 
-    return (str(suite_string) || str(two_string) || str(p1) || str(p2) || str(p3) || str(p4)).hash().slice(0,16).toZZ();
+
+pointEd25519 Elligator2(const str & pk_string, const str & alpha_string, const str & DST, bool verbose) {
+    return Elligator2_map_to_curve_and_clear_cofactor ( Elligator2_hash_to_field (pk_string || alpha_string, DST, verbose), verbose);
+}
+
+
+ZZ EdVRF_Hash_Points(const pointEd25519 & p1, const pointEd25519 & p2, const pointEd25519 & p3, const pointEd25519 & p4, str suite_string) {
+    return (suite_string || '\2' || str(p1) || str(p2) || str(p3) || str(p4) || '\0').hash().slice(0,16).toZZ();
 }
 
 str EdVRF_Prove(const str & SK, const str & alpha_string, bool useElligator, bool verbose) {
@@ -467,8 +565,7 @@ str EdVRF_Prove(const str & SK, const str & alpha_string, bool useElligator, boo
     str PK(B*x);
 
     // hash to curve
-    unsigned char suite_string = useElligator? 0x04 : 0x03;
-    pointEd25519 H = useElligator ? Elligator2(PK, alpha_string, verbose) : Try_And_Increment(PK, alpha_string, verbose);
+    pointEd25519 H = useElligator ? Elligator2(PK, alpha_string, ECVRF_DST, verbose) : Try_And_Increment(PK, alpha_string, verbose);
     
     if (verbose) cout << "H = " << str(H) << " <vspace />" << endl;
 
@@ -485,6 +582,7 @@ str EdVRF_Prove(const str & SK, const str & alpha_string, bool useElligator, boo
     if (verbose) cout << "U = k*B = " << str(U) << " <vspace />" << endl;
     if (verbose) cout << "V = k*H = " << str(V) << " <vspace />" << endl;
 
+    str suite_string = str(useElligator? '\4' : '\3');
     ZZ c = EdVRF_Hash_Points(H, Gamma, U, V, suite_string);
     
     ZZ s = (k+c*x) % q;
@@ -493,14 +591,12 @@ str EdVRF_Prove(const str & SK, const str & alpha_string, bool useElligator, boo
     if (verbose) cout << "pi = " << proof << " <vspace />" << endl;
     
     // proof_to_hash
-    unsigned char three_string = 0x03;
-    if (verbose) cout << "beta = " << (str(suite_string) || str(three_string) || str(Gamma*cofactor)).hash();
+    if (verbose) cout << "beta = " << (suite_string || '\3' || str(Gamma*cofactor) || '\0').hash();
     
     return proof;
 }
 
 bool EdVRF_Verify(const str & proof, const str & PK, const str & alpha_string, bool useElligator) {
-    unsigned char suite_string = useElligator? 0x04 : 0x03;
     
     // get the pk
     bool isValid;
@@ -514,9 +610,10 @@ bool EdVRF_Verify(const str & proof, const str & PK, const str & alpha_string, b
     ZZ s = proof.slice(48, 80).toZZ();
 
     // Hash to curve
-    pointEd25519 H = useElligator ? Elligator2(PK, alpha_string, false) : Try_And_Increment(PK, alpha_string, false);
+    pointEd25519 H = useElligator ? Elligator2(PK, alpha_string, ECVRF_DST, false) : Try_And_Increment(PK, alpha_string, false);
 
     // Hash points
+    str suite_string = str(useElligator? '\4' : '\3');
     ZZ cprime = EdVRF_Hash_Points(H, Gamma, B*s-Y*c, H*s-Gamma*c, suite_string);
     
     return c==cprime;
@@ -588,7 +685,6 @@ void testEdDSAExample (const char * sk_input,  const char* M_input, const char *
         cout<<endl<<"ERROR: Verification yes Elligator"<<endl;
         exit(-1);
     }
-    
 }
 
 void testOrder8Points() {
@@ -626,6 +722,44 @@ void testOrder8Points() {
     }
 }
 
+bool testElligatorExample (const char * M_input, const char * u, const char * x, const char * y) {
+    ZZ_p u_res = Elligator2_hash_to_field(str::fromCString(M_input), ELLIGATOR_TEST_DST, false);
+    if (conv<ZZ>(u_res) != str(u).toZZ_bigEndian()) {
+        cout << "ERROR Elligator2_hash_to_field on example \"" << M_input << "\"" << endl;
+        return false;
+    }
+    else {
+        pointEd25519 output = Elligator2_map_to_curve_and_clear_cofactor(u_res, false);
+        if (conv<ZZ>(output.x) != str(x).toZZ_bigEndian() || conv<ZZ>(output.y) != str(y).toZZ_bigEndian()) {
+            cout << "ERROR Elligator2_map_to_curve_and_clear_cofactor on example \"" << M_input << "\"" << endl;
+            return false;
+        }
+    }
+    return true;
+}
+
+void testElligator() {
+    /* These test vectors are from CFRG hash-to-curve draft https://github.com/cfrg/draft-irtf-cfrg-hash-to-curve/blob/8ec5a3fdcbfc05d00ab18aa419ddfc895cb5b686/draft-irtf-cfrg-hash-to-curve.md#edwards25519_xmdsha-256_ell2_nu_ */
+    /* Note that they are big-endian, unlike other test vectors in this code */
+    testElligatorExample("",
+                         "155c21d4cd09704fb445dbd195567689dfee8746f6a41a8e2dd344f370635fdc",
+                         "6252360003d43811610d39f67f0a479c4c52f8bc515e7ce6907b5894ea040835",
+                         "4af6284e3cc7116df104f6708e0c44d79b0e294ccd89b87c4c3c892ebd2f03b1");
+    testElligatorExample("abc",
+                         "44affc91a5e431c6bba08db58d4155bc73ab1369871efe48457fb879873edebe",
+                         "5cdeb5456820bd6f73e4d077b4bfba83a7dc50e875144467b7dd2041e5e2bcc3",
+                         "23e704500ac22fd7106ceedd86bfcc8d50351a6303be22b2724fcc1280d00544");
+    testElligatorExample("abcdef0123456789",
+                         "397af6c051fae69ac233a8f147d73d5ad5524164f8ab02081c0563b035e23fe3",
+                         "38dc8f399cd639b444bf4d5a58084874f4ae4d393aa07d9fda73f865e636bac6",
+                         "34b8a16b923101f2d4caa48d9bb86fef4f92be0ce0f55c8ba9db55da23ad623e");
+   testElligatorExample("a512_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                        "1468be7f7907b634683fd7f5d7dbc71603eca5cc4643a6e760902c0bffb994c0",
+                        "110d8143f8ed73bbb2f9a85de1abd2718cb4bb7db006296883ed6c8524518a67",
+                        "31e648bbade3b272b7676f82da905d27de37f41581b1d170250dd9d56f95413c"
+                     );
+
+}
 
 
 void test() {
@@ -634,14 +768,14 @@ void test() {
     testEdDSAExample("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
                      "",
                      "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-                     "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b",  "9275df67a68c8745c0ff97b48201ee6db447f7c93b23ae24cdc2400f52fdb08a1a6ac7ec71bf9c9c76e96ee4675ebff60625af28718501047bfd87b810c2d2139b73c23bd69de66360953a642c2a330a", "b6b4699f87d56126c9117a7da55bd0085246f4c56dbc95d20172612e9d38e8d7ca65e573a126ed88d4e30a46f80a666854d675cf3ba81de0de043c3774f061560f55edc256a787afe701677c0f602900");
+                     "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b",  "8657106690b5526245a92b003bb079ccd1a92130477671f6fc01ad16f26f723f5e8bd1839b414219e8626d393787a192241fc442e6569e96c462f62b8079b9ed83ff2ee21c90c7c398802fdeebea4001", "7d9c633ffeee27349264cf5c667579fc583b4bda63ab71d001f89c10003ab46f25898f6bd7d4ed4c75f0282b0f7bb9d0e61b387b76db60b3cbf34bf09109ccb33fab742a8bddc0c8ba3caf5c0b75bb04");
     testEdDSAExample("4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
                      "72",
-                     "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c",  "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00",  "84a63e74eca8fdd64e9972dcda1c6f33d03ce3cd4d333fd6cc789db12b5a7b9d03f1cb6b2bf7cd81a2a20bacf6e1c04e59f2fa16d9119c73a45a97194b504fb9a5c8cf37f6da85e03368d6882e511008", "ae5b66bdf04b4c010bfe32b2fc126ead2107b697634f6f7337b9bff8785ee111200095ece87dde4dbe87343f6df3b107d91798c8a7eb1245d3bb9c5aafb093358c13e6ae1111a55717e895fd15f99f07");
+                     "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c",  "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00",  "f3141cd382dc42909d19ec5110469e4feae18300e94f304590abdced48aed593f7eaf3eb2f1a968cba3f6e23b386aeeaab7b1ea44a256e811892e13eeae7c9f6ea8992557453eac11c4d5476b1f35a08", "47b327393ff2dd81336f8a2ef10339112401253b3c714eeda879f12c509072ef9bf1a234f833f72d8fff36075fd9b836da28b5569e74caa418bae7ef521f2ddd35f5727d271ecc70b4a83c1fc8ebc40c");
     
     testEdDSAExample("c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7",
                      "af82",
-                     "fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025",  "6291d657deec24024827e69c3abe01a30ce548a284743a445e3680d7db5ac3ac18ff9b538d16f290ae67f760984dc6594a7c15e9716ed28dc027beceea1ec40a",  "aca8ade9b7f03e2b149637629f95654c94fc9053c225ec21e5838f193af2b727b84ad849b0039ad38b41513fe5a66cdd2367737a84b488d62486bd2fb110b4801a46bfca770af98e059158ac563b690f",                     "dfa2cba34b611cc8c833a6ea83b8eb1bb5e2ef2dd1b0c481bc42ff36ae7847f6ab52b976cfd5def172fa412defde270c8b8bdfbaae1c7ece17d9833b1bcf31064fff78ef493f820055b561ece45e1009");
+                     "fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025",  "6291d657deec24024827e69c3abe01a30ce548a284743a445e3680d7db5ac3ac18ff9b538d16f290ae67f760984dc6594a7c15e9716ed28dc027beceea1ec40a",  "9bc0f79119cc5604bf02d23b4caede71393cedfbb191434dd016d30177ccbf80e29dc513c01c3a980e0e545bcd848222d08a6c3e3665ff5a4cab13a643bef812e284c6b2ee063a2cb4f456794723ad0a",                     "926e895d308f5e328e7aa159c06eddbe56d06846abf5d98c2512235eaa57fdce6187befa109606682503b3a1424f0f729ca0418099fbd86a48093e6a8de26307b8d93e02da927e6dd5b73c8f119aee0f");
 }
 
 void generateVectors() {
@@ -701,11 +835,11 @@ int main()
 {
     
     initialize();
+    testElligator();
     testOrder8Points();
     test();
-    //generateVectors();
+    generateVectors();
    
-    srand(5);
-    
-    for (int i = 0; i<1000; i++) generateRandomElligatorTestVector();
+    //srand(5);
+    //for (int i = 0; i<1000; i++) generateRandomElligatorTestVector();
 }

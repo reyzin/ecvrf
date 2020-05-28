@@ -1,4 +1,4 @@
-**INSECURE and INEFFICIENT** reference implementation for the [ECVRF](https://tools.ietf.org/html/draft-irtf-cfrg-vrf-02) (all four specified there).
+**INSECURE and INEFFICIENT** reference implementation for the four variants of the [ECVRF](https://github.com/fcelda/nsec5-draft/blob/master/vrf.txt) [see also](https://tools.ietf.org/html/draft-irtf-cfrg-vrf-07).
 Requires [GMP](https://gmplib.org) and [NTL](https://shoup.net/ntl).  
 
 **!!!!!!!!!!!!!!!!!!!!!!!!! WARNING !!!!!!!!!!!!!!!!!!!!!!!!!**
