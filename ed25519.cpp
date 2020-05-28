@@ -435,8 +435,7 @@ str EdDSA_KeyGen(const str & SK) {
 }
 
 static str ECVRF_DST;
-static str ELLIGATOR_TEST_DST;
-
+static str ELLIGATOR2_TEST_DST;
 void initialize() {
     power2(p, 255);
     p-=19;
@@ -456,7 +455,7 @@ void initialize() {
     q+=conv<ZZ>("27742317777372353535851937790883648493");
 
     ECVRF_DST = str::fromCString("ECVRF_edwards25519_XMD:SHA-512_ELL2_NU_") || '\4';
-    ELLIGATOR_TEST_DST = str::fromCString("edwards25519_XMD:SHA-512_ELL2_NU_TESTGEN");
+    ELLIGATOR2_TEST_DST = str::fromCString("edwards25519_XMD:SHA-512_ELL2_NU_TESTGEN");
 
 }
 
@@ -489,25 +488,25 @@ ZZ_p Elligator2_hash_to_field(const str & string_to_hash, const str & DST, bool 
     str b_0 = (Z_pad || string_to_hash || l_i_b_str || '\0' || DST_prime).hash();
     str b_1 = (b_0 || '\1' || DST_prime).hash();
     str uniform_bytes =  b_1.slice(0, len_in_bytes);
-    if (verbose) cout << "In Elligator: uniform_bytes = " << uniform_bytes << " <vspace />" << endl;
+    if (verbose) cout << "In Elligator2: uniform_bytes = " << uniform_bytes << " <vspace />" << endl;
     ZZ u_int = uniform_bytes.toZZ_bigEndian();
     ZZ_p u = conv<ZZ_p>(u_int);
-    if (verbose) cout << "In Elligator: u = " << str(conv<ZZ>(u), 32) << " <vspace />" << endl;
+    if (verbose) cout << "In Elligator2: u = " << str(conv<ZZ>(u), 32) << " <vspace />" << endl;
     return u;
 }
 
 pointEd25519 Elligator2_map_to_curve_and_clear_cofactor(const ZZ_p & input_field_element, bool verbose) {
     ZZ_p x1 = - A / (1 + 2*input_field_element*input_field_element); // this is the candidate Montgomery u coordinate
     ZZ_p gx = x1 * (x1*x1 + A*x1 + 1); // gx1 for now; may change to gx2 depending on Jacobi
-    if (verbose) cout << "In Elligator: gx1 = " << str(conv<ZZ>(gx), 32) << " <vspace />" << endl;
+    if (verbose) cout << "In Elligator2: gx1 = " << str(conv<ZZ>(gx), 32) << " <vspace />" << endl;
     int jacobi = Jacobi(conv<ZZ>(gx), p);
     ZZ_p montgomery_u; // this is the final Montgomery u coordinate; it's called x in hash-to-curve draft
     if (jacobi == 1) {
-        if (verbose) cout<< "In Elligator: gx1 is a square <vspace />" << endl;
+        if (verbose) cout<< "In Elligator2: gx1 is a square <vspace />" << endl;
         montgomery_u = x1;
     }
     else {
-        if (verbose) cout << "In Elligator: gx1 is a nonsquare <vspace />" << endl;
+        if (verbose) cout << "In Elligator2: gx1 is a nonsquare <vspace />" << endl;
         montgomery_u = -A-x1;
         gx = montgomery_u * (montgomery_u*montgomery_u + A*montgomery_u + 1);
     }
@@ -516,7 +515,7 @@ pointEd25519 Elligator2_map_to_curve_and_clear_cofactor(const ZZ_p & input_field
     bool isValid;
     pointEd25519 H = H_string.toECPoint(isValid);
     if (!isValid) {
-        cout<<"Elligator error 1"<<endl;
+        cout<<"Elligator2 error 1"<<endl;
         exit(-1);
     }
     // H now has the correct y coordinate; x coordinate may have the wrong sign
@@ -524,7 +523,7 @@ pointEd25519 Elligator2_map_to_curve_and_clear_cofactor(const ZZ_p & input_field
     ZZ_p montgomery_v = sqrt_minus_A_plus_2*montgomery_u/H.x;
     // Sanity check: v should be the square root of gx
     if (montgomery_v*montgomery_v != gx) {
-        cout<< "Elligator error 2"<<endl;
+        cout<< "Elligator2 error 2"<<endl;
     }
     // Check if the sign needs to be changed
     int sgn0 = bit(conv<ZZ>(montgomery_v), 0);
@@ -546,7 +545,7 @@ ZZ EdVRF_Hash_Points(const pointEd25519 & p1, const pointEd25519 & p2, const poi
     return (suite_string || '\2' || str(p1) || str(p2) || str(p3) || str(p4) || '\0').hash().slice(0,16).toZZ();
 }
 
-str EdVRF_Prove(const str & SK, const str & alpha_string, bool useElligator, bool verbose) {
+str EdVRF_Prove(const str & SK, const str & alpha_string, bool useElligator2, bool verbose) {
     // From https://tools.ietf.org/html/rfc8032#section-5.1.5
     
     str h = SK.hash();
@@ -565,7 +564,7 @@ str EdVRF_Prove(const str & SK, const str & alpha_string, bool useElligator, boo
     str PK(B*x);
 
     // hash to curve
-    pointEd25519 H = useElligator ? Elligator2(PK, alpha_string, ECVRF_DST, verbose) : Try_And_Increment(PK, alpha_string, verbose);
+    pointEd25519 H = useElligator2 ? Elligator2(PK, alpha_string, ECVRF_DST, verbose) : Try_And_Increment(PK, alpha_string, verbose);
     
     if (verbose) cout << "H = " << str(H) << " <vspace />" << endl;
 
@@ -582,7 +581,7 @@ str EdVRF_Prove(const str & SK, const str & alpha_string, bool useElligator, boo
     if (verbose) cout << "U = k*B = " << str(U) << " <vspace />" << endl;
     if (verbose) cout << "V = k*H = " << str(V) << " <vspace />" << endl;
 
-    str suite_string = str(useElligator? '\4' : '\3');
+    str suite_string = str(useElligator2? '\4' : '\3');
     ZZ c = EdVRF_Hash_Points(H, Gamma, U, V, suite_string);
     
     ZZ s = (k+c*x) % q;
@@ -596,7 +595,7 @@ str EdVRF_Prove(const str & SK, const str & alpha_string, bool useElligator, boo
     return proof;
 }
 
-bool EdVRF_Verify(const str & proof, const str & PK, const str & alpha_string, bool useElligator) {
+bool EdVRF_Verify(const str & proof, const str & PK, const str & alpha_string, bool useElligator2) {
     
     // get the pk
     bool isValid;
@@ -610,17 +609,17 @@ bool EdVRF_Verify(const str & proof, const str & PK, const str & alpha_string, b
     ZZ s = proof.slice(48, 80).toZZ();
 
     // Hash to curve
-    pointEd25519 H = useElligator ? Elligator2(PK, alpha_string, ECVRF_DST, false) : Try_And_Increment(PK, alpha_string, false);
+    pointEd25519 H = useElligator2 ? Elligator2(PK, alpha_string, ECVRF_DST, false) : Try_And_Increment(PK, alpha_string, false);
 
     // Hash points
-    str suite_string = str(useElligator? '\4' : '\3');
+    str suite_string = str(useElligator2? '\4' : '\3');
     ZZ cprime = EdVRF_Hash_Points(H, Gamma, B*s-Y*c, H*s-Gamma*c, suite_string);
     
     return c==cprime;
     
 }
 
-void generateTestVector(const char * sk_input, const char * M_input, bool useElligator) {
+void generateTestVector(const char * sk_input, const char * M_input, bool useElligator2) {
     str SK(sk_input);
     cout<<"<t>"<<endl;
     cout << "SK = " << str(SK) << " <vspace />" << endl;
@@ -631,11 +630,11 @@ void generateTestVector(const char * sk_input, const char * M_input, bool useEll
     else if(M.len == 1) cout << " (1 byte)";
     else cout << " (" << M.len << " bytes)";
     cout <<" <vspace />" << endl;
-    str proof = EdVRF_Prove(SK, str(M_input), useElligator, true);
+    str proof = EdVRF_Prove(SK, str(M_input), useElligator2, true);
     cout<<"</t>"<<endl;
 }
 
-void testEdDSAExample (const char * sk_input,  const char* M_input, const char * pk_value, const char* sig_value, const char* proofNoElligator_value, const char* proofElligator_value) {
+void testEdDSAExample (const char * sk_input,  const char* M_input, const char * pk_value, const char* sig_value, const char* proofNoElligator2_value, const char* proofElligator2_value) {
    
     str SK(sk_input);
     str PK = EdDSA_KeyGen(SK);
@@ -661,28 +660,28 @@ void testEdDSAExample (const char * sk_input,  const char* M_input, const char *
     }
 
     // Now evaluate the VRF on the same example and test the result
-    str proof = EdVRF_Prove(SK, M, false, false); // no elligator
-    if(proof!=proofNoElligator_value) {
-        cout<<endl<<"ERROR: ProofNoElligator = ";
+    str proof = EdVRF_Prove(SK, M, false, false); // no elligator2
+    if(proof!=proofNoElligator2_value) {
+        cout<<endl<<"ERROR: ProofNoElligator2 = ";
         cout<<proof;
         cout<<endl;
         exit(-1);
     }
     if(!EdVRF_Verify(proof, PK, M, false)) {
-        cout<<endl<<"ERROR: Verification no Elligator"<<endl;
+        cout<<endl<<"ERROR: Verification no Elligator2"<<endl;
         exit(-1);
     }
      
 
-    proof = EdVRF_Prove(SK, M, true, false); // yes elligator
-    if(proof!=proofElligator_value) {
-        cout<<endl<<"ERROR: ProofElligator = ";
+    proof = EdVRF_Prove(SK, M, true, false); // yes elligator2
+    if(proof!=proofElligator2_value) {
+        cout<<endl<<"ERROR: ProofElligator2 = ";
         cout<<proof;
         cout<<endl;
         exit(-1);
     }
     if(!EdVRF_Verify(proof, PK, M, true)) {
-        cout<<endl<<"ERROR: Verification yes Elligator"<<endl;
+        cout<<endl<<"ERROR: Verification yes Elligator2"<<endl;
         exit(-1);
     }
 }
@@ -722,8 +721,8 @@ void testOrder8Points() {
     }
 }
 
-bool testElligatorExample (const char * M_input, const char * u, const char * x, const char * y) {
-    ZZ_p u_res = Elligator2_hash_to_field(str::fromCString(M_input), ELLIGATOR_TEST_DST, false);
+bool testElligator2Example (const char * M_input, const char * u, const char * x, const char * y) {
+    ZZ_p u_res = Elligator2_hash_to_field(str::fromCString(M_input), ELLIGATOR2_TEST_DST, false);
     if (conv<ZZ>(u_res) != str(u).toZZ_bigEndian()) {
         cout << "ERROR Elligator2_hash_to_field on example \"" << M_input << "\"" << endl;
         return false;
@@ -738,22 +737,22 @@ bool testElligatorExample (const char * M_input, const char * u, const char * x,
     return true;
 }
 
-void testElligator() {
+void testElligator2() {
     /* These test vectors are from CFRG hash-to-curve draft https://github.com/cfrg/draft-irtf-cfrg-hash-to-curve/blob/8ec5a3fdcbfc05d00ab18aa419ddfc895cb5b686/draft-irtf-cfrg-hash-to-curve.md#edwards25519_xmdsha-256_ell2_nu_ */
     /* Note that they are big-endian, unlike other test vectors in this code */
-    testElligatorExample("",
+    testElligator2Example("",
                          "155c21d4cd09704fb445dbd195567689dfee8746f6a41a8e2dd344f370635fdc",
                          "6252360003d43811610d39f67f0a479c4c52f8bc515e7ce6907b5894ea040835",
                          "4af6284e3cc7116df104f6708e0c44d79b0e294ccd89b87c4c3c892ebd2f03b1");
-    testElligatorExample("abc",
+    testElligator2Example("abc",
                          "44affc91a5e431c6bba08db58d4155bc73ab1369871efe48457fb879873edebe",
                          "5cdeb5456820bd6f73e4d077b4bfba83a7dc50e875144467b7dd2041e5e2bcc3",
                          "23e704500ac22fd7106ceedd86bfcc8d50351a6303be22b2724fcc1280d00544");
-    testElligatorExample("abcdef0123456789",
+    testElligator2Example("abcdef0123456789",
                          "397af6c051fae69ac233a8f147d73d5ad5524164f8ab02081c0563b035e23fe3",
                          "38dc8f399cd639b444bf4d5a58084874f4ae4d393aa07d9fda73f865e636bac6",
                          "34b8a16b923101f2d4caa48d9bb86fef4f92be0ce0f55c8ba9db55da23ad623e");
-   testElligatorExample("a512_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   testElligator2Example("a512_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                         "1468be7f7907b634683fd7f5d7dbc71603eca5cc4643a6e760902c0bffb994c0",
                         "110d8143f8ed73bbb2f9a85de1abd2718cb4bb7db006296883ed6c8524518a67",
                         "31e648bbade3b272b7676f82da905d27de37f41581b1d170250dd9d56f95413c"
@@ -800,7 +799,7 @@ void generateVectors() {
     cout<<"</section>"<<endl;
 }
 
-void generateRandomElligatorTestVector() {
+void generateRandomElligator2TestVector() {
     // A random sk
     char sk_string[65];
     sk_string[64]='\0';
@@ -835,11 +834,11 @@ int main()
 {
     
     initialize();
-    testElligator();
+    testElligator2();
     testOrder8Points();
     test();
     generateVectors();
    
     //srand(5);
-    //for (int i = 0; i<1000; i++) generateRandomElligatorTestVector();
+    //for (int i = 0; i<1000; i++) generateRandomElligator2TestVector();
 }
