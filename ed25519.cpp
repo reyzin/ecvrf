@@ -778,7 +778,7 @@ void test() {
 }
 
 void generateVectors() {
-    cout<<"<section title=\"ECVRF-ED25519-SHA512-TAI\">"<<endl;
+    cout<<"<section title=\"ECVRF-EDWARDS25519-SHA512-TAI\">"<<endl;
     cout<<"<t>These three example secret keys and messages are taken from Section 7.1 of <xref target=\"RFC8032\"/>.</t>"<<endl;
     generateTestVector("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
                      "", false);
@@ -787,7 +787,8 @@ void generateVectors() {
     generateTestVector("c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7",
                        "af82",false);
     cout<<"</section>"<<endl;
-    cout<<"<section title=\"ECVRF-ED25519-SHA512-Elligator2\">"<<endl;
+    
+    cout<<"<section title=\"ECVRF-EDWARDS25519-SHA512-ELL2\">"<<endl;
     cout<<"<t>These three example secret keys and messages are taken from Section 7.1 of <xref target=\"RFC8032\"/>.</t>"<<endl;
 
     generateTestVector("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
