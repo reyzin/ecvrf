@@ -470,7 +470,7 @@ pointEd25519 Try_And_Increment(const str & pk_string, const str & alpha_string, 
             pointEd25519 G = (*H)*cofactor;
             if (!G.isInfinity()) {
                 delete H;
-                if (verbose) cout << "try_and_increment succeded on ctr = " << ctr << " <vspace />" << endl;
+                if (verbose) cout << "try_and_increment succeeded on ctr = " << ctr << " <vspace />" << endl;
                 return G;
             }
             delete H;

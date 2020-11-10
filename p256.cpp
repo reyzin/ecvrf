@@ -478,7 +478,7 @@ pointP256 Try_And_Increment(const str & pk_string, const str & alpha_string, boo
         bool isValid;
         pointP256 H = h_string.toECPoint(isValid);
         if (isValid) {
-            if (verbose) cout << "try_and_increment succeded on ctr = " << ctr << " <vspace />" << endl;
+            if (verbose) cout << "try_and_increment succeeded on ctr = " << ctr << " <vspace />" << endl;
             return H;
         }
     }
