@@ -478,7 +478,7 @@ pointP256 Try_And_Increment(const str & pk_string, const str & alpha_string, boo
         bool isValid;
         pointP256 H = h_string.toECPoint(isValid);
         if (isValid) {
-            if (verbose) cout << "try_and_increment succeeded on ctr = " << ctr << " <vspace />" << endl;
+            if (verbose) cout << "          <li>try_and_increment succeeded on ctr = " << ctr << "</li>" << endl;
             return H;
         }
     }
@@ -495,10 +495,10 @@ ZZ_p SSWU_hash_to_field(const str & string_to_hash, const str & DST, bool verbos
     str b_1 = (b_0 || '\1' || DST_prime).hash();
     str b_2 = (b_0.strxor(b_1) || '\2' || DST_prime).hash();
     str uniform_bytes =  (b_1 || b_2).slice(0,len_in_bytes);
-    if (verbose) cout << "In SSWU: uniform_bytes = " << uniform_bytes << " <vspace />" << endl;
+    if (verbose) cout << "          <li>In SSWU: uniform_bytes = " << uniform_bytes << "</li>" << endl;
     ZZ u_int = uniform_bytes.toZZ();
     ZZ_p u = conv<ZZ_p>(u_int);
-    if (verbose) cout << "In SSWU: u = " << str(conv<ZZ>(u), 32) << " <vspace />" << endl;
+    if (verbose) cout << "          <li>In SSWU: u = " << str(conv<ZZ>(u), 32) << "</li>" << endl;
     return u;
 }
 
@@ -509,13 +509,13 @@ pointP256 SSWU_map_to_curve(const ZZ_p & u, bool verbose) {
     ZZ_p tv1 = IsZero(tv1_inverse) ? tv1_inverse : inv(tv1_inverse);
     ZZ_p x = minus_b_over_a*(1+tv1);
     if (IsZero(tv1)) x = b/(Z*a);
-    if (verbose) cout << "In SSWU: x1 = " << str(conv<ZZ>(x), 32) << " <vspace />" << endl;
+    if (verbose) cout << "          <li>In SSWU: x1 = " << str(conv<ZZ>(x), 32) << "</li>" << endl;
     ZZ_p gx1 = x*x*x + a*x + b;
     if (Jacobi(conv<ZZ>(gx1), p) == 1) {
-        if (verbose) cout<< "In SSWU: gx1 is a square <vspace />" << endl;
+        if (verbose) cout<< "          <li>In SSWU: gx1 is a square</li>" << endl;
     }
     else {
-        if (verbose) cout<< "In SSWU: gx1 is a nonsquare <vspace />" << endl;
+        if (verbose) cout<< "          <li>In SSWU: gx1 is a nonsquare</li>" << endl;
         x = Z_times_u_squared*x;
     }
 
@@ -536,7 +536,7 @@ pointP256 SSWU(const str & pk_string, const str & alpha_string, const str & DST,
     return SSWU_map_to_curve ( SSWU_hash_to_field (pk_string || alpha_string, DST, verbose), verbose);
 }
 
-ZZ ECVRF_Hash_Points(const pointP256 & p1, const pointP256 & p2, const pointP256 & p3, const pointP256 & p4, str suite_string) {
+ZZ ECVRF_Challenge_Generation(const pointP256 & p1, const pointP256 & p2, const pointP256 & p3, const pointP256 & p4, str suite_string) {
     return (suite_string || '\2'  || str(p1) || str(p2) || str(p3) || str(p4)  || '\0').hash().slice(0,16).toZZ();
 }
 
@@ -550,26 +550,26 @@ str ECVRF_Prove(const str & SK, const str & alpha_string, bool useSSWU, bool ver
     // hash to curve
     pointP256 H = useSSWU ? SSWU(PK, alpha_string, ECVRF_DST, verbose) : Try_And_Increment(PK, alpha_string, verbose);
     
-    if (verbose) cout << "H = " << str(H) << " <vspace />" << endl;
+    if (verbose) cout << "          <li>H = " << str(H) << "</li>" << endl;
 
     
     pointP256 Gamma = H*x;
     ZZ k = Nonce_Generation(SK, str(H));
-    if (verbose) cout << "k = " << str(k, 32) << " <vspace />" << endl;
+    if (verbose) cout << "          <li>k = " << str(k, 32) << "</li>" << endl;
     
     pointP256 U = B*k;
     pointP256 V = H*k;
-    if (verbose) cout << "U = k*B = " << str(U) << " <vspace />" << endl;
-    if (verbose) cout << "V = k*H = " << str(V) << " <vspace />" << endl;
+    if (verbose) cout << "          <li>U = k*B = " << str(U) << "</li>" << endl;
+    if (verbose) cout << "          <li>V = k*H = " << str(V) << "</li>" << endl;
 
     str suite_string = str(useSSWU? '\2' : '\1');
-    ZZ c = ECVRF_Hash_Points(H, Gamma, U, V, suite_string);
+    ZZ c = ECVRF_Challenge_Generation(H, Gamma, U, V, suite_string);
     ZZ s = (k+c*x) % q;
 
     str proof = str(Gamma) || str(c, 16) || str(s, 32);
-    if (verbose) cout << "pi = " << proof << " <vspace />" << endl;
+    if (verbose) cout << "          <li>pi = " << proof << "</li>" << endl;
     
-    if (verbose) cout << "beta = " << (suite_string || '\3' || str(Gamma)  || '\0').hash();
+    if (verbose) cout << "          <li>beta = " << (suite_string || '\3' || str(Gamma)  || '\0').hash() << "</li>" << endl;
 
     return proof;
 }
@@ -592,7 +592,7 @@ bool ECVRF_Verify(const str & proof, const str & PK, const str & alpha_string, b
 
     // Hash points
     str suite_string = str(useSSWU? '\2' : '\1');
-    ZZ cprime = ECVRF_Hash_Points(H, Gamma, B*s-Y*c, H*s-Gamma*c, suite_string);
+    ZZ cprime = ECVRF_Challenge_Generation(H, Gamma, B*s-Y*c, H*s-Gamma*c, suite_string);
     
     return c==cprime;
     
@@ -600,15 +600,15 @@ bool ECVRF_Verify(const str & proof, const str & PK, const str & alpha_string, b
 
 void generateTestVector(const char * sk_input, const char * M_input, bool useSSWU) {
     str SK(sk_input);
-    cout<<"<t>"<<endl;
-    cout << "SK = x = " << str(SK) << " <vspace />" << endl;
-    cout << "PK = " << B*SK.toZZ() << " <vspace />" << endl;
+    cout<<  "        <ul empty=\"true\" spacing=\"compact\">"<<endl;
+    cout << "          <li>SK = x = " << str(SK) << "</li>" << endl;
+    cout << "          <li>PK = " << B*SK.toZZ() << "</li>" << endl;
     str M = str::fromCString(M_input);
-    cout << "alpha = " << M << " (ASCII \"";
+    cout << "          <li>alpha = " << M << " (ASCII \"";
     for (int i=0; i<M.len; i++) cout<< M.s[i];
-    cout <<"\") <vspace />" << endl;
+    cout <<"\")</li>" << endl;
     str proof = ECVRF_Prove(SK, M, useSSWU, true);
-    cout<<"</t>"<<endl;
+    cout<<"        </ul>"<<endl;
 }
 
 void testECDSAExample (const char * sk_input, const char* M_input, const char * pk_value,  const char* sig_value,const char* proofNoSSWU_value, const char* proofSSWU_value) {
@@ -742,31 +742,42 @@ void generateVectors() {
     str ANSIX962SK(ANSIX962sk, 32);
 
   
-    cout<<"<section title=\"ECVRF-P256-SHA256-TAI\">"<<endl;
-    cout<<"<t>These two example secret keys and messages are taken from Appendix A.2.5 of <xref target=\"RFC6979\"/>.</t>"<<endl;
+    cout<<"      <section numbered=\"true\" toc=\"default\">" << endl;
+    cout<<"        <name>ECVRF-P256-SHA256-TAI</name>"  << endl;
+    cout<<"        <t>The example secret keys and messages in Examples 1 and 2 are taken from Appendix A.2.5 of <xref target=\"RFC6979\" format=\"default\"/>.</t>" << endl;
+
+    cout<<endl<<"        <t>Example 1:</t>"<<endl;
     generateTestVector("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
                        "sample", false);
+    cout<<endl<<"        <t>Example 2:</t>"<<endl;
     generateTestVector("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
                        "test", false);
-    
-    cout<<"<t>This example secret key is taken from Appendix L.4.2 of <xref target=\"ANSI.X9-62-2005\"/>.</t>"<<endl;
 
+    cout<<endl<<"        <t>The example secret key in Example 3 is taken from Appendix L.4.2 of <xref target=\"ANSI.X9-62-2005\" format=\"default\"/>.</t>"<<endl;
+
+    cout<<"        <t>Example 3:</t>"<<endl;
     generateTestVector(ANSIX962SK.toHexString(),
                        "Example using ECDSA key from Appendix L.4.2 of ANSI.X9-62-2005", false);
 
-    cout<<"</section>"<<endl;
-    cout<<"<section title=\"ECVRF-P256-SHA256-SSWU\">"<<endl;
-    cout<<"<t>These two example secret keys and messages are taken from Appendix A.2.5 of <xref target=\"RFC6979\"/>.</t>"<<endl;
+    cout<<"      </section>"<<endl<<endl;
     
+    cout<<"      <section numbered=\"true\" toc=\"default\">" << endl;
+    cout<<"        <name>ECVRF-P256-SHA256-SSWU</name>" << endl << endl;
+    cout<<"        <t>The example secret keys and messages in Examples 4 and 5 are taken from Appendix A.2.5 of <xref target=\"RFC6979\" format=\"default\"/>.</t>" << endl;
+
+    cout<<endl<<"        <t>Example 4:</t>"<<endl;
     generateTestVector("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
                        "sample", true);
+    
+    cout<<endl<<"        <t>Example 5:</t>"<<endl;
     generateTestVector("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
                        "test", true);
     
-    cout<<"<t>This example secret key is taken from Appendix L.4.2 of <xref target=\"ANSI.X9-62-2005\"/>.</t>"<<endl;
+    cout<<endl<<"        <t>The example secret key in Example 6 is taken from Appendix L.4.2 of <xref target=\"ANSI.X9-62-2005\" format=\"default\"/>.</t>"<<endl;
+    cout<<"        <t>Example 6:</t>"<<endl;
     generateTestVector(ANSIX962SK.toHexString(),
                        "Example using ECDSA key from Appendix L.4.2 of ANSI.X9-62-2005", true);
-    cout<<"</section>"<<endl;
+    cout<<"      </section>"<<endl;
 }
 
 int main()
