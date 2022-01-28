@@ -587,6 +587,8 @@ bool ECVRF_Verify(const str & proof, const str & PK, const str & alpha_string, b
     ZZ c = proof.slice(33, 49).toZZ();
     ZZ s = proof.slice(49, 81).toZZ();
 
+    if (s>=q) return false;
+    
     // Hash to curve
     pointP256 H = useSSWU ? SSWU(PK, alpha_string, ECVRF_DST, false) : Try_And_Increment(PK, alpha_string, false);
 

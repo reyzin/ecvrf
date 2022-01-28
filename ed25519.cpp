@@ -607,6 +607,8 @@ bool EdVRF_Verify(const str & proof, const str & PK, const str & alpha_string, b
     if (!isValid) return false;
     ZZ c = proof.slice(32, 48).toZZ();
     ZZ s = proof.slice(48, 80).toZZ();
+    
+    if (s>=q) return false;
 
     // Hash to curve
     pointEd25519 H = useElligator2 ? Elligator2(PK, alpha_string, ECVRF_DST, false) : Try_And_Increment(PK, alpha_string, false);
