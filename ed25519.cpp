@@ -541,8 +541,8 @@ pointEd25519 Elligator2(const str & pk_string, const str & alpha_string, const s
 }
 
 
-ZZ EdVRF_Challenge_Generation(const pointEd25519 & p1, const pointEd25519 & p2, const pointEd25519 & p3, const pointEd25519 & p4, str suite_string) {
-    return (suite_string || '\2' || str(p1) || str(p2) || str(p3) || str(p4) || '\0').hash().slice(0,16).toZZ();
+ZZ EdVRF_Challenge_Generation(const pointEd25519 & p1, const pointEd25519 & p2, const pointEd25519 & p3, const pointEd25519 & p4, const pointEd25519 & p5, str suite_string) {
+    return (suite_string || '\2' || str(p1) || str(p2) || str(p3) || str(p4) || str(p5) || '\0').hash().slice(0,16).toZZ();
 }
 
 str EdVRF_Prove(const str & SK, const str & alpha_string, bool useElligator2, bool verbose) {
@@ -560,8 +560,10 @@ str EdVRF_Prove(const str & SK, const str & alpha_string, bool useElligator2, bo
     if (verbose) cout << "          <li>x = " << str(x, 32) << "</li>" << endl;
 
     
+    
     // public key
-    str PK(B*x);
+    pointEd25519 Y = B*x;
+    str PK(Y);
 
     // hash to curve
     pointEd25519 H = useElligator2 ? Elligator2(PK, alpha_string, ECVRF_DST, verbose) : Try_And_Increment(PK, alpha_string, verbose);
@@ -582,7 +584,7 @@ str EdVRF_Prove(const str & SK, const str & alpha_string, bool useElligator2, bo
     if (verbose) cout << "          <li>V = k*H = " << str(V) << "</li>" << endl;
 
     str suite_string = str(useElligator2? '\4' : '\3');
-    ZZ c = EdVRF_Challenge_Generation(H, Gamma, U, V, suite_string);
+    ZZ c = EdVRF_Challenge_Generation(Y, H, Gamma, U, V, suite_string);
     
     ZZ s = (k+c*x) % q;
     
@@ -615,7 +617,7 @@ bool EdVRF_Verify(const str & proof, const str & PK, const str & alpha_string, b
 
     // Hash points
     str suite_string = str(useElligator2? '\4' : '\3');
-    ZZ cprime = EdVRF_Challenge_Generation(H, Gamma, B*s-Y*c, H*s-Gamma*c, suite_string);
+    ZZ cprime = EdVRF_Challenge_Generation(Y, H, Gamma, B*s-Y*c, H*s-Gamma*c, suite_string);
     
     return c==cprime;
     
@@ -769,14 +771,14 @@ void test() {
     testEdDSAExample("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
                      "",
                      "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-                     "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b",  "8657106690b5526245a92b003bb079ccd1a92130477671f6fc01ad16f26f723f5e8bd1839b414219e8626d393787a192241fc442e6569e96c462f62b8079b9ed83ff2ee21c90c7c398802fdeebea4001", "7d9c633ffeee27349264cf5c667579fc583b4bda63ab71d001f89c10003ab46f25898f6bd7d4ed4c75f0282b0f7bb9d0e61b387b76db60b3cbf34bf09109ccb33fab742a8bddc0c8ba3caf5c0b75bb04");
+                     "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b",  "8657106690b5526245a92b003bb079ccd1a92130477671f6fc01ad16f26f723f26f8a57ccaed74ee1b190bed1f479d9727d2d0f9b005a6e456a35d4fb0daab1268a1b0db10836d9826a528ca76567805", "7d9c633ffeee27349264cf5c667579fc583b4bda63ab71d001f89c10003ab46f14adf9a3cd8b8412d9038531e865c341cafa73589b023d14311c331a9ad15ff2fb37831e00f0acaa6d73bc9997b06501");
     testEdDSAExample("4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
                      "72",
-                     "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c",  "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00",  "f3141cd382dc42909d19ec5110469e4feae18300e94f304590abdced48aed593f7eaf3eb2f1a968cba3f6e23b386aeeaab7b1ea44a256e811892e13eeae7c9f6ea8992557453eac11c4d5476b1f35a08", "47b327393ff2dd81336f8a2ef10339112401253b3c714eeda879f12c509072ef9bf1a234f833f72d8fff36075fd9b836da28b5569e74caa418bae7ef521f2ddd35f5727d271ecc70b4a83c1fc8ebc40c");
+                     "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c",  "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00",  "f3141cd382dc42909d19ec5110469e4feae18300e94f304590abdced48aed5933bf0864a62558b3ed7f2fea45c92a465301b3bbf5e3e54ddf2d935be3b67926da3ef39226bbc355bdc9850112c8f4b02", "47b327393ff2dd81336f8a2ef10339112401253b3c714eeda879f12c509072ef055b48372bb82efbdce8e10c8cb9a2f9d60e93908f93df1623ad78a86a028d6bc064dbfc75a6a57379ef855dc6733801");
     
     testEdDSAExample("c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7",
                      "af82",
-                     "fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025",  "6291d657deec24024827e69c3abe01a30ce548a284743a445e3680d7db5ac3ac18ff9b538d16f290ae67f760984dc6594a7c15e9716ed28dc027beceea1ec40a",  "9bc0f79119cc5604bf02d23b4caede71393cedfbb191434dd016d30177ccbf80e29dc513c01c3a980e0e545bcd848222d08a6c3e3665ff5a4cab13a643bef812e284c6b2ee063a2cb4f456794723ad0a",                     "926e895d308f5e328e7aa159c06eddbe56d06846abf5d98c2512235eaa57fdce6187befa109606682503b3a1424f0f729ca0418099fbd86a48093e6a8de26307b8d93e02da927e6dd5b73c8f119aee0f");
+                     "fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025",  "6291d657deec24024827e69c3abe01a30ce548a284743a445e3680d7db5ac3ac18ff9b538d16f290ae67f760984dc6594a7c15e9716ed28dc027beceea1ec40a",  "9bc0f79119cc5604bf02d23b4caede71393cedfbb191434dd016d30177ccbf8096bb474e53895c362d8628ee9f9ea3c0e52c7a5c691b6c18c9979866568add7a2d41b00b05081ed0f58ee5e31b3a970e",                     "926e895d308f5e328e7aa159c06eddbe56d06846abf5d98c2512235eaa57fdce35b46edfc655bc828d44ad09d1150f31374e7ef73027e14760d42e77341fe05467bb286cc2c9d7fde29120a0b2320d04");
 }
 
 void generateVectors() {

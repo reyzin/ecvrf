@@ -536,8 +536,8 @@ pointP256 SSWU(const str & pk_string, const str & alpha_string, const str & DST,
     return SSWU_map_to_curve ( SSWU_hash_to_field (pk_string || alpha_string, DST, verbose), verbose);
 }
 
-ZZ ECVRF_Challenge_Generation(const pointP256 & p1, const pointP256 & p2, const pointP256 & p3, const pointP256 & p4, str suite_string) {
-    return (suite_string || '\2'  || str(p1) || str(p2) || str(p3) || str(p4)  || '\0').hash().slice(0,16).toZZ();
+ZZ ECVRF_Challenge_Generation(const pointP256 & p1, const pointP256 & p2, const pointP256 & p3, const pointP256 & p4, const pointP256 & p5, str suite_string) {
+    return (suite_string || '\2'  || str(p1) || str(p2) || str(p3) || str(p4)  || str(p5)  || '\0').hash().slice(0,16).toZZ();
 }
 
 
@@ -545,7 +545,8 @@ str ECVRF_Prove(const str & SK, const str & alpha_string, bool useSSWU, bool ver
     // Secret Scalar
     ZZ x = SK.toZZ();
     // public key
-    str PK(B*x);
+    pointP256 Y = B*x;
+    str PK(Y);
     
     // hash to curve
     pointP256 H = useSSWU ? SSWU(PK, alpha_string, ECVRF_DST, verbose) : Try_And_Increment(PK, alpha_string, verbose);
@@ -563,7 +564,7 @@ str ECVRF_Prove(const str & SK, const str & alpha_string, bool useSSWU, bool ver
     if (verbose) cout << "          <li>V = k*H = " << str(V) << "</li>" << endl;
 
     str suite_string = str(useSSWU? '\2' : '\1');
-    ZZ c = ECVRF_Challenge_Generation(H, Gamma, U, V, suite_string);
+    ZZ c = ECVRF_Challenge_Generation(Y, H, Gamma, U, V, suite_string);
     ZZ s = (k+c*x) % q;
 
     str proof = str(Gamma) || str(c, 16) || str(s, 32);
@@ -594,7 +595,7 @@ bool ECVRF_Verify(const str & proof, const str & PK, const str & alpha_string, b
 
     // Hash points
     str suite_string = str(useSSWU? '\2' : '\1');
-    ZZ cprime = ECVRF_Challenge_Generation(H, Gamma, B*s-Y*c, H*s-Gamma*c, suite_string);
+    ZZ cprime = ECVRF_Challenge_Generation(Y, H, Gamma, B*s-Y*c, H*s-Gamma*c, suite_string);
     
     return c==cprime;
     
@@ -714,14 +715,14 @@ void testECDSAandECVRF () {
                      "sample",
                      "0360FED4BA255A9D31C961EB74C6356D68C049B8923B61FA6CE669622E60F29FB6",
                      "EFD48B2AACB6A8FD1140DD9CD45E81D69D2C877B56AAF991C34D0EA84EAF3716F7CB1C942D657C41D436C7A1B6E29F65F3E900DBB9AFF4064DC4AB2F843ACDA8",
-                     "035b5c726e8c0e2c488a107c600578ee75cb702343c153cb1eb8dec77f4b5071b498e7c291a16dafb9ccff8c2ae1f039fa92a328d5f7e0d483ee18353067a13f699944a78892ff24939bcd044827eef884",
-                     "0331d984ca8fece9cbb9a144c0d53df3c4c7a33080c1e02ddb1a96a365394c7888a39dfe7432f119228473f37db3f87ca470c63b0237432a791f18f823c1215e276b7ac0962725ba8daec2bf90c0ccc91a");
+                     "035b5c726e8c0e2c488a107c600578ee75cb702343c153cb1eb8dec77f4b5071b4a53f0a46f018bc2c56e58d383f2305e0975972c26feea0eb122fe7893c15af376b33edf7de17c6ea056d4d82de6bc02f",
+                     "0331d984ca8fece9cbb9a144c0d53df3c4c7a33080c1e02ddb1a96a365394c7888782fffde7b842c38c20c08de6ec6c2e7027a97000f2c9fa4425d5c03e639fb48fde58114d755985498d7eb234cf4aed9");
     testECDSAExample("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
                      "test",
                      "0360FED4BA255A9D31C961EB74C6356D68C049B8923B61FA6CE669622E60F29FB6",
                      "F1ABB023518351CD71D881567B1EA663ED3EFCF6C5132B354F28D3B0B7D38367019F4113742A2B14BD25926B49C649155F267E60D3814B4C0CC84250E46F0083",
-                     "034dac60aba508ba0c01aa9be80377ebd7562c4a52d74722e0abae7dc3080ddb56c874cc95b7d29a6a65cb518fe6f4418256385f12b1eccbad023c901bb983ff707b109b3a3b526ca3a1e8661f7b8481a2",
-                     "03f814c0455d32dbc75ad3aea08c7e2db31748e12802db23640203aebf1fa8db2721e0499b7cecd68027a82f6095da076625a5f2f62908f1c283d5ee9b9e852d85bedf64f2452a4e5094729e101824443e");
+                     "034dac60aba508ba0c01aa9be80377ebd7562c4a52d74722e0abae7dc3080ddb56c19e067b15a8a8174905b13617804534214f935b94c2287f797e393eb0816969d864f37625b443f30f1a5a33f2b3c854",
+                     "03f814c0455d32dbc75ad3aea08c7e2db31748e12802db23640203aebf1fa8db2743aad348a3006dc1caad7da28687320740bf7dd78fe13c298867321ce3b36b79ec3093b7083ac5e4daf3465f9f43c627");
     
     // This example is from ANSI X9.62 2005 L.4.2
     ZZ ANSIX962sk =  conv<ZZ>("20186677036482506117540275567393538695075300175221296989956723148347484984008");
@@ -731,8 +732,8 @@ void testECDSAandECVRF () {
                       "Example using ECDSA key from Appendix L.4.2 of ANSI.X9-62-2005",
                       "03596375E6CE57E0F20294FC46BDFCFD19A39F8161B58695B3EC5B3D16427C274D",
                       NULL,
-                      "03d03398bf53aa23831d7d1b2937e005fb0062cbefa06796579f2a1fc7e7b8c6679d92353c8a4fdfddb2a8540094b686cb5fb50f730d833a098a0399ccad32f3fec4da2299891fc75ebda42baeb65e8c11",
-                      "039f8d9cdc162c89be2871cbcb1435144739431db7fab437ab7bc4e2651a9e99d5288aac70a5e4bd07df303c1d460eb6336bb5fa95436a07c2f6b7aec6fef7cc4846ea901ee1e238dee12bf752029b0b2e"
+                      "03d03398bf53aa23831d7d1b2937e005fb0062cbefa06796579f2a1fc7e7b8c667d091c00b0f5c3619d10ecea44363b5a599cadc5b2957e223fec62e81f7b4825fc799a771a3d7334b9186bdbee87316b1",
+                      "039f8d9cdc162c89be2871cbcb1435144739431db7fab437ab7bc4e2651a9e99d5488405a11a6c7fc8defddd9e1573a563b7333aab4effe73ae9803274174c659269fd39b53e133dcd9e0d24f01288de9a"
                       );
     
 }
