@@ -71,7 +71,9 @@ class pointEd25519 {
     /*
      curve is -x^2+y^2 = 1+dx^2y^2, where d = -121665/121666
      encoding: edwards. y followed by x parity bit. Point at infinity: y = 1, x = 0.
-     birationally equivalent to montgomery: u, v v2 = u(u2 + Au + 1) (in Mongomery, we store only u as PK).
+     birationally equivalent to montgomery:
+     (we will use coordinates (u, v) for Montgomery, and the equation v^2 = u(u^2 + Au + 1), where A = 486662)
+     (in Mongomery, we store only u as PK).
      Conversion x=(u/v) * sqrt_minus_A_plus_2,y=(u-1)/(u+1) (where minus_A_plus_2 = -486664)
      To go back: u = (1+y)/(1-y), v = sqrt_minus_A_plus_2*u/x, whenever (x, y) is not the point at infinity).
      */
@@ -718,9 +720,17 @@ void testOrder8Points() {
         if (!isValid) {
             cout << "ERROR: point " << i <<"  is not even a valid point!\n";
         }
-        if (!((bad_pk[i].toECPoint(isValid))*cofactor).isInfinity()) {
-            cout << "ERROR: point " << i <<"  is not bad!\n";
+        bool success = false;
+        for (ZZ j(1); j<16; j*=2) {
+            if (((bad_pk[i].toECPoint(isValid))*j).isInfinity()) {
+                cout << "Point " << i <<"  has order "<< j << ".\n";
+                success = true;
+                break;
+            }
         }
+        if (not success)
+            cout << "ERROR: point " << i <<"  is not bad!\n";
+
     }
 }
 
