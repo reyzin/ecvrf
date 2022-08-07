@@ -84,7 +84,7 @@ public:
         return isInf;
     }
     
-    bool onCurve() {
+    bool onCurve() const {
         return isInf || y*y == x*x*x+a*x+b;
     }
     
@@ -115,7 +115,7 @@ public:
         return *this+(-b);
     }
     
-    pointP256 operator*(const ZZ & scalar) {
+    pointP256 operator*(const ZZ & scalar) const {
         pointP256 result;
         // simple double-and-add
         for (int i = NumBits(scalar)-1; i>=0; i--) {
@@ -126,7 +126,7 @@ public:
         return result;
     }
     
-    bool operator==(pointP256 that) {
+    bool operator==(pointP256 that) const {
         return x==that.x && y==that.y && isInf == that.isInf;
     }
     
@@ -381,7 +381,7 @@ public:
     }
     
     // case insensitive
-    bool operator == (const char * hexString) {
+    bool operator == (const char * hexString) const {
         char * temp = this->toHexString();
         int i;
         for (i = 0; temp[i]!='\0' && hexString[i]!='\0'; i++) {
@@ -389,7 +389,7 @@ public:
         }
         return temp[i]==hexString[i];
     }
-    bool operator != (const char * hexString) {
+    bool operator != (const char * hexString) const {
         return ! (*this==hexString);
     }
 };

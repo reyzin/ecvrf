@@ -176,7 +176,7 @@ public:
         return result;
     }
     
-    bool operator==(pointEd25519 that) {
+    bool operator==(pointEd25519 that) const {
         return x==that.x && y==that.y;
     }
     
@@ -202,7 +202,7 @@ public:
     }
     
 
-    // From hex string -- little endian
+    // From hex string
     str(const char *  input) {
         len = strlen(input)/2;
         s = new unsigned char[len];
@@ -381,7 +381,7 @@ public:
     }
     
     // case insensitive
-    bool operator == (const char * hexString) {
+    bool operator == (const char * hexString) const {
         char * temp = this->toHexString();
         int i;
         for (i = 0; temp[i]!='\0' && hexString[i]!='\0'; i++) {
@@ -389,7 +389,7 @@ public:
         }
         return temp[i]==hexString[i];
     }
-    bool operator != (const char * hexString) {
+    bool operator != (const char * hexString) const {
         return ! (*this==hexString);
     }
     
