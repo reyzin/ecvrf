@@ -2,7 +2,8 @@
  !!!!!!!!!!!!!!!!!!!!!!!!! WARNING !!!!!!!!!!!!!!!!!!!!!!!!!
  THIS CODE IS INSECURE AND NOT TO BE USED FOR ACTUAL CRYPTO!!!
  IT IS ALSO INEFFICIENT AND COBBLED TOGETHER IN ONE DAY!!! DO NOT USE IT!!
- It was written by Leo Reyzin as a reference implementation only, in order to generate test vectors.
+ It was written by Leo Reyzin as a reference implementation only, in order to
+ generate test vectors for https://github.com/cfrg/draft-irtf-cfrg-vrf
  */
 
 /*
@@ -607,9 +608,16 @@ void generateTestVector(const char * sk_input, const char * M_input, bool useSSW
     cout << "          <li>SK = x = " << str(SK) << "</li>" << endl;
     cout << "          <li>PK = " << B*SK.toZZ() << "</li>" << endl;
     str M = str::fromCString(M_input);
-    cout << "          <li>alpha = " << M << " (ASCII \"";
-    for (int i=0; i<M.len; i++) cout<< M.s[i];
-    cout <<"\")</li>" << endl;
+    cout << "          <li>alpha = " << M ;
+    if(M.len == 0) cout << " (the empty string";
+    else if(M.len == 1) cout << " (1 byte";
+    else cout << " (" << M.len << " bytes";
+    if (M.len > 0) {
+        cout << "; ASCII \"";
+        for (int i=0; i<M.len; i++) cout<< M.s[i];
+        cout <<"\"";
+    }
+    cout <<")</li>" << endl;
     str proof = ECVRF_Prove(SK, M, useSSWU, true);
     cout<<"        </ul>"<<endl;
 }
@@ -740,6 +748,9 @@ void testECDSAandECVRF () {
 
 
 void generateVectors() {
+    int exampleCounter=9; // after 9 RSA examples
+
+    
     // This example is from ANSI X9.62 2005 L.4.2
     ZZ ANSIX962sk =  conv<ZZ>("20186677036482506117540275567393538695075300175221296989956723148347484984008");
     str ANSIX962SK(ANSIX962sk, 32);
@@ -747,18 +758,18 @@ void generateVectors() {
   
     cout<<"      <section numbered=\"true\" toc=\"default\">" << endl;
     cout<<"        <name>ECVRF-P256-SHA256-TAI</name>"  << endl;
-    cout<<"        <t>The example secret keys and messages in Examples 1 and 2 are taken from Appendix A.2.5 of <xref target=\"RFC6979\" format=\"default\"/>.</t>" << endl;
+    cout<<"        <t>The example secret keys and messages in Examples " << exampleCounter+1 << " and " << exampleCounter+2 << " are taken from Appendix A.2.5 of <xref target=\"RFC6979\" format=\"default\"/>.</t>" << endl;
 
-    cout<<endl<<"        <t>Example 1:</t>"<<endl;
+    cout<<endl<<"        <t>Example " << ++exampleCounter << ":</t>"<<endl;
     generateTestVector("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
                        "sample", false);
-    cout<<endl<<"        <t>Example 2:</t>"<<endl;
+    cout<<endl<<"        <t>Example " << ++exampleCounter << ":</t>"<<endl;
     generateTestVector("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
                        "test", false);
 
-    cout<<endl<<"        <t>The example secret key in Example 3 is taken from Appendix L.4.2 of <xref target=\"ANSI.X9-62-2005\" format=\"default\"/>.</t>"<<endl;
+    cout<<endl<<"        <t>The example secret key in Example " << exampleCounter+1 << " is taken from Appendix L.4.2 of <xref target=\"ANSI.X9-62-2005\" format=\"default\"/>.</t>"<<endl;
 
-    cout<<"        <t>Example 3:</t>"<<endl;
+    cout<<endl<<"        <t>Example " << ++exampleCounter << ":</t>"<<endl;
     generateTestVector(ANSIX962SK.toHexString(),
                        "Example using ECDSA key from Appendix L.4.2 of ANSI.X9-62-2005", false);
 
@@ -766,18 +777,18 @@ void generateVectors() {
     
     cout<<"      <section numbered=\"true\" toc=\"default\">" << endl;
     cout<<"        <name>ECVRF-P256-SHA256-SSWU</name>" << endl << endl;
-    cout<<"        <t>The example secret keys and messages in Examples 4 and 5 are taken from Appendix A.2.5 of <xref target=\"RFC6979\" format=\"default\"/>.</t>" << endl;
+    cout<<"        <t>The example secret keys and messages in Examples " << exampleCounter+1 << " and " << exampleCounter+2 << " are taken from Appendix A.2.5 of <xref target=\"RFC6979\" format=\"default\"/>.</t>" << endl;
 
-    cout<<endl<<"        <t>Example 4:</t>"<<endl;
+    cout<<endl<<"        <t>Example " << ++exampleCounter << ":</t>"<<endl;
     generateTestVector("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
                        "sample", true);
     
-    cout<<endl<<"        <t>Example 5:</t>"<<endl;
+    cout<<endl<<"        <t>Example " << ++exampleCounter << ":</t>"<<endl;
     generateTestVector("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
                        "test", true);
     
-    cout<<endl<<"        <t>The example secret key in Example 6 is taken from Appendix L.4.2 of <xref target=\"ANSI.X9-62-2005\" format=\"default\"/>.</t>"<<endl;
-    cout<<"        <t>Example 6:</t>"<<endl;
+    cout<<endl<<"        <t>The example secret key in Example " << exampleCounter+1 << " is taken from Appendix L.4.2 of <xref target=\"ANSI.X9-62-2005\" format=\"default\"/>.</t>"<<endl;
+    cout<<endl<<"        <t>Example " << ++exampleCounter << ":</t>"<<endl;
     generateTestVector(ANSIX962SK.toHexString(),
                        "Example using ECDSA key from Appendix L.4.2 of ANSI.X9-62-2005", true);
     cout<<"      </section>"<<endl;

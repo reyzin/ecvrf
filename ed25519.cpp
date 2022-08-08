@@ -2,7 +2,8 @@
  !!!!!!!!!!!!!!!!!!!!!!!!! WARNING !!!!!!!!!!!!!!!!!!!!!!!!!
  THIS CODE IS INSECURE AND NOT TO BE USED FOR ACTUAL CRYPTO!!!
  IT IS ALSO INEFFICIENT AND COBBLED TOGETHER JUST TO GET IT WORKING!!! DO NOT USE IT!!!
- It was written by Leo Reyzin as a reference implementation only, in order to generate test vectors.
+ It was written by Leo Reyzin as a reference implementation only, in order to
+ generate test vectors for https://github.com/cfrg/draft-irtf-cfrg-vrf
  */
 
 /*
@@ -691,7 +692,7 @@ void testEdDSAExample (const char * sk_input,  const char* M_input, const char *
     }
 }
 
-void testOrder8Points() {
+void testOrder8Points(bool verbose) {
     // These are from Section 5.6.1 of vrf draft
     ZZ bad_y2 = conv<ZZ> ("2707385501144840649318225287225658788936804267575313519463743609750303402022");
     str bad_pk [] = {
@@ -723,7 +724,7 @@ void testOrder8Points() {
         bool success = false;
         for (ZZ j(1); j<16; j*=2) {
             if (((bad_pk[i].toECPoint(isValid))*j).isInfinity()) {
-                cout << "Point " << i <<"  has order "<< j << ".\n";
+                if (verbose) cout << "Point " << i <<"  has order "<< j << ".\n";
                 success = true;
                 break;
             }
@@ -791,36 +792,37 @@ void test() {
 }
 
 void generateVectors() {
+    int exampleCounter=15; // after 9 RSA examples + 6 P256 examples
     cout<<"    <section numbered=\"true\" toc=\"default\">" << endl;
     cout<<"        <name>ECVRF-EDWARDS25519-SHA512-TAI</name>"  << endl << endl;
-    cout<<"        <t>The example secret keys and messages in Examples 7, 8, and 9 are taken from Section 7.1 of <xref target=\"RFC8032\" format=\"default\"/>.</t>" << endl;
+    cout<<"        <t>The example secret keys and messages in Examples "<< exampleCounter+1 << ", " << exampleCounter+2 << ", and "<< exampleCounter+3 << " are taken from Section 7.1 of <xref target=\"RFC8032\" format=\"default\"/>.</t>" << endl;
 
-    cout<<endl<<"        <t>Example 7:</t>"<<endl;
+    cout<<endl<<"        <t>Example " << ++exampleCounter << ":</t>"<<endl;
     generateTestVector("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
                        "", false);
 
-    cout<<endl<<"        <t>Example 8:</t>"<<endl;
+    cout<<endl<<"        <t>Example " << ++exampleCounter << ":</t>"<<endl;
     generateTestVector("4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
                      "72", false);
 
-    cout<<endl<<"        <t>Example 9:</t>"<<endl;
+    cout<<endl<<"        <t>Example " << ++exampleCounter << ":</t>"<<endl;
     generateTestVector("c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7",
                        "af82",false);
     cout<<"      </section>"<<endl;
     
     cout<<endl<<"      <section numbered=\"true\" toc=\"default\">" << endl;
     cout<<"        <name>ECVRF-EDWARDS25519-SHA512-ELL2</name>"  << endl << endl;
-    cout<<"        <t>The example secret keys and messages in Examples 10, 11, and 12 are taken from Section 7.1 of <xref target=\"RFC8032\" format=\"default\"/>.</t>" << endl;
+    cout<<"        <t>The example secret keys and messages in Examples " << exampleCounter+1 << ", " << exampleCounter+2 << ", and "<< exampleCounter+3 << " are taken from Section 7.1 of <xref target=\"RFC8032\" format=\"default\"/>.</t>" << endl;
 
-    cout<<endl<<"        <t>Example 10:</t>"<<endl;
+    cout<<endl<<"        <t>Example " << ++exampleCounter << ":</t>"<<endl;
     generateTestVector("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
                      "", true);
 
-    cout<<endl<<"        <t>Example 11:</t>"<<endl;
+    cout<<endl<<"        <t>Example " << ++exampleCounter << ":</t>"<<endl;
     generateTestVector("4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
                      "72", true);
 
-    cout<<endl<<"        <t>Example 12:</t>"<<endl;
+    cout<<endl<<"        <t>Example " << ++exampleCounter << ":</t>"<<endl;
     generateTestVector("c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7",
                        "af82",true);
     cout<<"      </section>"<<endl;
@@ -862,7 +864,7 @@ int main()
     
     initialize();
     testElligator2();
-    testOrder8Points();
+    testOrder8Points(false);
     test();
     generateVectors();
    
